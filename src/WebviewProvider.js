@@ -7,6 +7,7 @@ class WebviewProvider {
   #context
   #typingRate
   #webview
+  #progressInterval  // polls playback position while a song is playing
 
   /** @param {vscode.ExtensionContext} context */
   constructor(context) {
@@ -75,7 +76,23 @@ class WebviewProvider {
   // Push current song list + state to the webview
   postSongList() {
     const MusicTyping = require('./MusicTyping')
-    this.#postMessage({ type: 'SONG_LIST', ...MusicTyping.getSongList() })
+    const state = MusicTyping.getSongList()
+    this.#postMessage({ type: 'SONG_LIST', ...state })
+
+    // Start polling for progress while playing; stop when not
+    if (state.isPlaying && !this.#progressInterval) {
+      this.#progressInterval = setInterval(() => {
+        const s = MusicTyping.getSongList()
+        this.#postMessage({ type: 'SONG_LIST', ...s })
+        if (!s.isPlaying) {
+          clearInterval(this.#progressInterval)
+          this.#progressInterval = null
+        }
+      }, 500)
+    } else if (!state.isPlaying && this.#progressInterval) {
+      clearInterval(this.#progressInterval)
+      this.#progressInterval = null
+    }
   }
 
   #getConfigs() {

@@ -23,6 +23,9 @@ class MusicalTyping {
   static #loop
   static #isPlaying
 
+  static #playStartTime   // Date.now() when playback began
+  static #totalDuration   // seconds, from MusicSynth
+
   static init(context, webviewProvider) {
     this.#context = context
     this.#webviewProvider = webviewProvider
@@ -31,6 +34,8 @@ class MusicalTyping {
     this.#currentNoteIdx = 0
     this.#currentSongIdx = 0
     this.#isPlaying = false
+    this.#playStartTime = null
+    this.#totalDuration = null
 
     try {
       this.#loadConfiguration()
@@ -75,12 +80,17 @@ class MusicalTyping {
   }
 
   static getSongList() {
+    const elapsed = (this.#isPlaying && this.#playStartTime)
+      ? (Date.now() - this.#playStartTime) / 1000
+      : null
     return {
       songs: this.#songList.map(s => s.name),
       currentIdx: this.#currentSongIdx,
       shuffle: this.#shuffle,
       loop: this.#loop,
-      isPlaying: this.#isPlaying
+      isPlaying: this.#isPlaying,
+      elapsed,
+      totalDuration: this.#totalDuration
     }
   }
 
@@ -110,6 +120,8 @@ class MusicalTyping {
   // Called by Speaker when a full-song play finishes naturally
   static onSongFinished() {
     this.#isPlaying = false
+    this.#playStartTime = null
+    this.#totalDuration = null
     this.stopBtn.hide()
     vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
 
@@ -143,15 +155,18 @@ class MusicalTyping {
         return
       }
       const midiPath = this.#songList[this.#currentSongIdx].path
+      const buffer = await MusicSynth.getMidiFileBuffer(midiPath)
+      // MusicSynth.getMidiFileBuffer works at 44100Hz, Float32 mono — derive duration from buffer size
+      this.#totalDuration = (buffer.length / 4) / 44100  // 4 bytes per Float32 sample
+      this.#playStartTime = Date.now()
       this.#isPlaying = true
       this.#webviewProvider?.postSongList()
-      Speaker.sendToSpeaker(
-        await MusicSynth.getMidiFileBuffer(midiPath),
-        () => MusicalTyping.onSongFinished()
-      )
+      Speaker.sendToSpeaker(buffer, () => MusicalTyping.onSongFinished())
       this.stopBtn.show()
     } else {
       this.#isPlaying = false
+      this.#playStartTime = null
+      this.#totalDuration = null
       Speaker.stopToSpeaker()
       this.stopBtn.hide()
       this.#webviewProvider?.postSongList()
