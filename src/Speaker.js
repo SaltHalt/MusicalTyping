@@ -78,7 +78,7 @@ class Speaker {
     }
   }
 
-  static sendToSpeaker(buffer) {
+  static sendToSpeaker(buffer, onFinish = null) {
     if (!Speaker.#binaryPath || !fs.existsSync(Speaker.#binaryPath)) {
       vscode.window.showErrorMessage('play-buffer binary not found or not downloaded')
       return
@@ -110,9 +110,11 @@ class Speaker {
         vscode.window.showWarningMessage('Failed to play buffer: ' + err.message)
         console.error('Speaker.sendToSpeaker spawn error:', err)
       })
-      playProcess.on('exit', () => {
+      playProcess.on('exit', (code, signal) => {
         Speaker.#currentPlayProcess = null
         vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
+        // Only call onFinish if the process ended naturally (not killed by stopToSpeaker)
+        if (signal == null && onFinish) onFinish()
       })
     } catch (err2) {
       vscode.window.showWarningMessage('Failed to play buffer: ' + err2.message)

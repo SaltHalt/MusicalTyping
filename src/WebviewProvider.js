@@ -25,12 +25,40 @@ class WebviewProvider {
     // Listen for config changes and typing events from extension
     this.#webview = webviewView.webview
 
+    // Handle messages from the webview UI
+    webviewView.webview.onDidReceiveMessage(msg => {
+      if (!msg?.type) return
+      // Lazy require to avoid circular dependency at module load time
+      const MusicTyping = require('./MusicTyping')
+      switch (msg.type) {
+        case 'SELECT_SONG':
+          MusicTyping.selectSong(msg.idx)
+          break
+        case 'TOGGLE_SHUFFLE':
+          MusicTyping.setShuffle(msg.value)
+          break
+        case 'TOGGLE_LOOP':
+          MusicTyping.setLoop(msg.value)
+          break
+        case 'PLAY':
+          vscode.commands.executeCommand('akazas-love.playSong')
+          break
+        case 'STOP':
+          vscode.commands.executeCommand('akazas-love.stopSong')
+          break
+      }
+    })
+
     const d = webviewView.onDidChangeVisibility(() => {
       // Inject initial params again, since it got reset when hidden
-      if (webviewView.visible) this.#postMessage(this.#getConfigs())
+      if (webviewView.visible) {
+        this.#postMessage(this.#getConfigs())
+        this.postSongList()
+      }
     })
 
     this.#postMessage(this.#getConfigs())
+    this.postSongList()
     this.#context.subscriptions.push(d)
   }
 
@@ -42,6 +70,12 @@ class WebviewProvider {
 
   reloadConfigs() {
     this.#postMessage({ type: 'CONFIG', ...this.#getConfigs() })
+  }
+
+  // Push current song list + state to the webview
+  postSongList() {
+    const MusicTyping = require('./MusicTyping')
+    this.#postMessage({ type: 'SONG_LIST', ...MusicTyping.getSongList() })
   }
 
   #getConfigs() {
@@ -96,7 +130,7 @@ class WebviewProvider {
    * @param {object} msg
    */
   #postMessage(msg) {
-    this.#webview.postMessage(msg)
+    this.#webview?.postMessage(msg)
   }
 }
 

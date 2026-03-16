@@ -21,7 +21,8 @@ async function activate(context) {
 
   const webviewProvider = new WebviewProvider(context)
   try {
-    MusicTyping.init(context)
+    // Pass webviewProvider into MusicTyping so it can push song-list updates
+    MusicTyping.init(context, webviewProvider)
     SnowEngine.init(context, webviewProvider)
   } catch (error) {
     console.error('Error initializing extensions:', error)

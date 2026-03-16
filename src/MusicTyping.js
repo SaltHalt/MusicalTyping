@@ -9,7 +9,7 @@ const MusicSynth = require('./MusicSynth')
 class MusicalTyping {
 
   static #context
-  static #midiPath
+  static #webviewProvider
 
   static #enabled
   static #volume
@@ -17,16 +17,25 @@ class MusicalTyping {
   static #currentNoteIdx
   static #notes
 
-  static init(context) {
+  static #songList       // [{ name: string, path: string }]
+  static #currentSongIdx
+  static #shuffle
+  static #loop
+  static #isPlaying
+
+  static init(context, webviewProvider) {
     this.#context = context
-    this.#midiPath = path.join(this.#context.extensionPath, 'media', `akaza's-love-theme.mid`)
+    this.#webviewProvider = webviewProvider
 
     this.#notes = []
     this.#currentNoteIdx = 0
+    this.#currentSongIdx = 0
+    this.#isPlaying = false
 
     try {
       this.#loadConfiguration()
-      this.#loadMidiFile()
+      this.#scanSongList()
+      this.#loadCurrentMidi()
       this.#setupEventListeners()
     } catch (error) {
       console.error('Error initializing MusicalTyping:', error)
@@ -38,13 +47,114 @@ class MusicalTyping {
     this.#context.subscriptions.push(this.stopBtn)
   }
 
+  // Scan media/ for all .mid files and build the song list
+  static #scanSongList() {
+    const mediaDir = path.join(this.#context.extensionPath, 'media')
+    let files = []
+    try {
+      files = fs.readdirSync(mediaDir).filter(f => f.toLowerCase().endsWith('.mid'))
+    } catch (e) {
+      console.error('Failed to scan media/ for MIDI files:', e)
+    }
+
+    this.#songList = files.map(f => ({
+      name: path.basename(f, path.extname(f)),
+      path: path.join(mediaDir, f)
+    }))
+
+    if (this.#songList.length === 0) {
+      console.error('No .mid files found in media/')
+    } else {
+      console.log(`Found ${this.#songList.length} MIDI file(s): ${this.#songList.map(s => s.name).join(', ')}`)
+    }
+  }
+
+  static #loadCurrentMidi() {
+    if (this.#songList.length === 0) return
+    this.#loadMidiFile(this.#songList[this.#currentSongIdx].path)
+  }
+
+  static getSongList() {
+    return {
+      songs: this.#songList.map(s => s.name),
+      currentIdx: this.#currentSongIdx,
+      shuffle: this.#shuffle,
+      loop: this.#loop,
+      isPlaying: this.#isPlaying
+    }
+  }
+
+  static selectSong(idx) {
+    if (idx < 0 || idx >= this.#songList.length) return
+    const wasPlaying = this.#isPlaying
+    if (wasPlaying) Speaker.stopToSpeaker()
+
+    this.#currentSongIdx = idx
+    this.#currentNoteIdx = 0
+    this.#loadCurrentMidi()
+    this.#webviewProvider?.postSongList()
+
+    if (wasPlaying) this.playMidiFile(true)
+  }
+
+  static setLoop(value) {
+    this.#loop = value
+    this.#webviewProvider?.postSongList()
+  }
+
+  static setShuffle(value) {
+    this.#shuffle = value
+    this.#webviewProvider?.postSongList()
+  }
+
+  // Called by Speaker when a full-song play finishes naturally
+  static onSongFinished() {
+    this.#isPlaying = false
+    this.stopBtn.hide()
+    vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
+
+    if (!this.#loop && !this.#shuffle) {
+      this.#webviewProvider?.postSongList()
+      return
+    }
+
+    this.#advanceToNextSong()
+    this.playMidiFile(true)
+  }
+
+  static #advanceToNextSong() {
+    if (this.#songList.length <= 1) return
+    if (this.#shuffle) {
+      let next
+      do { next = Math.floor(Math.random() * this.#songList.length) }
+      while (next === this.#currentSongIdx && this.#songList.length > 1)
+      this.#currentSongIdx = next
+    } else {
+      this.#currentSongIdx = (this.#currentSongIdx + 1) % this.#songList.length
+    }
+    this.#currentNoteIdx = 0
+    this.#loadCurrentMidi()
+  }
+
   static async playMidiFile(needPlay) {
     if (needPlay) {
-      Speaker.sendToSpeaker(await MusicSynth.getMidiFileBuffer(MusicalTyping.#midiPath))
+      if (this.#songList.length === 0) {
+        vscode.window.showWarningMessage('No MIDI files found in media/')
+        return
+      }
+      const midiPath = this.#songList[this.#currentSongIdx].path
+      this.#isPlaying = true
+      this.#webviewProvider?.postSongList()
+      Speaker.sendToSpeaker(
+        await MusicSynth.getMidiFileBuffer(midiPath),
+        () => MusicalTyping.onSongFinished()
+      )
       this.stopBtn.show()
     } else {
+      this.#isPlaying = false
       Speaker.stopToSpeaker()
       this.stopBtn.hide()
+      this.#webviewProvider?.postSongList()
     }
   }
 
@@ -62,6 +172,8 @@ class MusicalTyping {
     const config = vscode.workspace.getConfiguration('akazas-love')
     this.#enabled = config.get('musicTyping')
     this.#volume = config.get('volume')
+    this.#shuffle = config.get('shuffle') ?? false
+    this.#loop = config.get('loop') ?? true
   }
 
   static #setupEventListeners() {
@@ -112,8 +224,8 @@ class MusicalTyping {
     this.#currentNoteIdx++
   }
 
-  static #loadMidiFile() {
-    const midiData = fs.readFileSync(this.#midiPath)
+  static #loadMidiFile(midiPath) {
+    const midiData = fs.readFileSync(midiPath)
     const midi = new Midi(midiData)
 
     // Gather all notes from all tracks (same as index.html)

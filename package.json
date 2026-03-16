@@ -321,6 +321,16 @@
           "minimum": 0,
           "maximum": 1,
           "description": "🔊 Volume level for musical notes (0.0 to 1.0)"
+        },
+        "akazas-love.shuffle": {
+          "type": "boolean",
+          "default": false,
+          "description": "🔀 Shuffle through songs in the playlist"
+        },
+        "akazas-love.loop": {
+          "type": "boolean",
+          "default": true,
+          "description": "🔁 Loop the playlist when it reaches the end"
         }
       }
     }
