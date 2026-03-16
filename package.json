@@ -1,9 +1,9 @@
 {
   "name": "akazas-love",
-  "displayName": "MIDI Musical Typing",
+  "displayName": "Akaza's Love - Musical Typing 🎶 and Falling Snow ❄️",
   "description": "Transform your typing into beautiful melody and animated snowfall",
   "publisher": "lanly-dev",
-  "version": "1.1.1",
+  "version": "1.0.1",
   "sponsor": {
     "url": "https://github.com/sponsors/lanly-dev"
   },
@@ -14,6 +14,14 @@
     "Other"
   ],
   "keywords": [
+    "akaza",
+    "anime",
+    "demon slayer",
+    "happy",
+    "hakuji",
+    "infinity castle",
+    "kimetsu no yaiba",
+    "koyuki",
     "melody",
     "music",
     "musical typing",
@@ -37,7 +45,7 @@
       "activitybar": [
         {
           "id": "akazas-love-webview",
-          "title": " ",
+          "title": "Welcome Home",
           "icon": "media/akaza.svg"
         }
       ]
@@ -336,13 +344,14 @@
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
-    "follow-redirects": "^1.15.11"
+    "follow-redirects": "^1.15.11",
+    "mpg123-decoder": "^1.0.3"
   },
   "devDependencies": {
     "@types/node": "24.x",
     "@types/vscode": "^1.104.0",
     "@vscode/vsce": "^3.6.2",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.25.10",
     "eslint": "^9.37.0",
     "minify": "^14.1.0",
     "ovsx": "^0.10.6"

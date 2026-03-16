@@ -12,7 +12,7 @@ esbuild.build({
   outfile: path.resolve(__dirname, 'dist/extension.js'),
   sourcemap: true,
   logLevel: 'info',
-  external: ['vscode']
+  external: ['vscode', 'mpg123-decoder']
 }).catch(() => process.exit(1))
 
 const minify = require('minify').minify

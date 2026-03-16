@@ -1,138 +1,85 @@
 const fs = require('fs')
 const pkg = require('@tonejs/midi')
 const { Midi } = pkg
+const SoundFont = require('./SoundFont')
+
+const SAMPLE_RATE = 44100
 
 class MusicSynth {
 
-  static #SAMPLE_RATE = 44100
+  // Generate PCM for a single note from a soundfont sample.
+  // `startTime` is in seconds and is used to calculate the startSample offset
+  // when mixing into a full-song buffer. Pass 0 for individual keystroke notes.
+  static generateNote(midiNote, duration, startTime, options = {}) {
+    const velocity = Math.min(1.0, options.velocity ?? 0.8)
+    const chordScale = options.chordScale ?? 1.0
 
-  static generateNote(frequency, duration, startTime, options = {}) {
+    const playDuration = Math.max(duration, 0.05)
+    const startSample = Math.floor(SAMPLE_RATE * startTime)
 
-    // --- Minimal detuning for cleaner sound ---
-    const detuneCents = (Math.random() - 0.5) * 2  // Much less detuning
-    const detuneRatio = Math.pow(2, detuneCents / 1200)
-    const freqDetuned = frequency * detuneRatio
+    const floatBuffer = SoundFont.isReady
+      ? SoundFont.getSample(midiNote, playDuration, velocity * chordScale)
+      : new Float32Array(Math.ceil(playDuration * SAMPLE_RATE))  // silence fallback
 
-    // --- Browser Tone.js minimum duration enforcement ---
-    const playDuration = Math.max(duration, 1)  // Match browser behavior!
-
-    // --- Velocity mapping (browser uses 0.2 base volume) ---
-    let velocity = options.velocity !== undefined ? options.velocity : 0.8
-    let chordScale = options.chordScale !== undefined ? options.chordScale : 1
-    let volume = 0.2 * velocity * chordScale  // Browser Tone.js uses 0.2 base volume + chord scaling
-
-    // --- Simplified envelope to match browser linear ramp ---
-    const attack = 0.005  // Very quick attack
-
-    const samples = Math.floor(this.#SAMPLE_RATE * playDuration)
-    const startSample = Math.floor(this.#SAMPLE_RATE * startTime)
-    const result = { samples, startSample, frequency: freqDetuned, duration: playDuration, options }
-    // Output Float32Array PCM (mono, -1.0 to 1.0)
-    result.floatBuffer = new Float32Array(samples)
-    for (let i = 0; i < samples; i++) {
-      const t = i / this.#SAMPLE_RATE
-      let envelope = 0
-      if (t <= attack) envelope = t / attack
-      else {
-        const releasePhase = (t - attack) / (playDuration - attack)
-        envelope = 1 - releasePhase
-      }
-      envelope = Math.max(0, envelope)
-      const oscillatorValue = (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * freqDetuned * t))
-      let amplitude = oscillatorValue * envelope * volume
-      result.floatBuffer[i] = amplitude
-    }
-    return result
+    return { floatBuffer, samples: floatBuffer.length, startSample }
   }
 
-  static async getMidiFileBuffer(midiFilePath, options = {}) {
-    const midiData = fs.readFileSync(midiFilePath)
-    const midi = new Midi(midiData)
+  // Build a complete mixed PCM buffer for a whole MIDI file.
+  static async getMidiFileBuffer(midiFilePath) {
+    await SoundFont.waitUntilReady()
 
-    let allNotes = []
+    const midi = new Midi(fs.readFileSync(midiFilePath))
 
-    // eslint-disable-next-line no-unused-vars
-    midi.tracks.forEach((track, trackIndex) => {
-      // console.log(`Track ${trackIndex}: ${track.name || 'Untitled'} - ${track.notes.length} notes`)
-
+    const allNotes = []
+    midi.tracks.forEach(track => {
       track.notes.forEach(note => {
-        const frequency = 440 * Math.pow(2, (note.midi - 69) / 12)
-
-        // // Debug: Check actual durations from @tonejs/midi
-        // if (note.duration < 0.1) console.warn(`Short note found: ${note.name} duration: ${note.duration.toFixed(3)}s`)
-
         allNotes.push({
-          frequency,
+          midi: note.midi,
           startTime: note.time,
-          duration: note.duration, // can alert to change the speed
-          velocity: note.velocity * 1.5, // volume
-          midiNote: note.midi,
-          noteName: note.name
+          duration: note.duration,
+          velocity: note.velocity,
         })
       })
     })
-
-    // console.log(`Found ${allNotes.length} notes`)
-
-    // Sort by start time
     allNotes.sort((a, b) => a.startTime - b.startTime)
 
-    // Calculate total duration
-    const totalDuration = Math.max(midi.duration, Math.max(...allNotes.map(n => n.startTime + n.duration))) + 1
-    const totalSamples = Math.floor(this.#SAMPLE_RATE * totalDuration)
-
-    // console.log(`Total duration: ${totalDuration.toFixed(2)} seconds`)
-
-    // Group notes by time frame for chord volume scaling (like browser)
+    // Group simultaneous notes so we can scale their volume proportionally,
+    // preventing dense chords from clipping.
     const timeFrames = new Map()
     allNotes.forEach(note => {
-      const timeKey = Math.floor(note.startTime * 10) / 10  // 0.1s precision
-      if (!timeFrames.has(timeKey)) timeFrames.set(timeKey, [])
-      timeFrames.get(timeKey).push(note)
+      const key = Math.round(note.startTime * 1000)
+      if (!timeFrames.has(key)) timeFrames.set(key, 0)
+      timeFrames.set(key, timeFrames.get(key) + 1)
     })
-
-    // Apply chord scaling to each note
     allNotes.forEach(note => {
-      const timeKey = Math.floor(note.startTime * 10) / 10
-      const chordSize = timeFrames.get(timeKey).length
-      note.chordScale = 1 / chordSize  // Volume scaling for chords
+      note.chordScale = 1 / timeFrames.get(Math.round(note.startTime * 1000))
     })
 
-    // Create final audio buffer as Int16Array
-    const finalMix = new Float32Array(totalSamples)
+    const totalDuration = Math.max(
+      midi.duration,
+      ...allNotes.map(n => n.startTime + n.duration)
+    ) + 0.5  // let last notes ring out
+    const totalSamples = Math.ceil(SAMPLE_RATE * totalDuration)
+    const mix = new Float32Array(totalSamples)
 
-    // Generate and mix all notes
-    // eslint-disable-next-line no-unused-vars
-    allNotes.forEach((note, index) => {
-      // if (index % 50 === 0) console.log(`Processing note ${index + 1}/${allNotes.length}`)
-      const noteResult = this.generateNote(
-        note.frequency,
+    for (const note of allNotes) {
+      const { floatBuffer, startSample } = this.generateNote(
+        note.midi,
         note.duration,
         note.startTime,
-        {
-          ...options,
-          midiNote: note.midiNote,
-          velocity: note.velocity,
-          chordScale: note.chordScale
-        }
+        { velocity: note.velocity, chordScale: note.chordScale }
       )
-      const startSample = Math.floor(note.startTime * this.#SAMPLE_RATE)
-      for (let i = 0; i < noteResult.samples && startSample + i < totalSamples; i++) {
-        finalMix[startSample + i] += noteResult.floatBuffer[i]
-        // Clamp to -1.0..1.0
-        finalMix[startSample + i] = Math.max(-1.0, Math.min(1.0, finalMix[startSample + i]))
+      for (let i = 0; i < floatBuffer.length && startSample + i < totalSamples; i++) {
+        mix[startSample + i] += floatBuffer[i]
       }
-    })
-
-    // Apply a gentle soft clip and headroom before returning Float32 PCM
-    const headroom = 0.97
-    for (let i = 0; i < totalSamples; i++) {
-      // soft clip using tanh-like curve; approx with Math.tanh for simplicity
-      const x = finalMix[i] * headroom
-      finalMix[i] = Math.tanh(x)
     }
-    // Return Float32 PCM as Buffer (little-endian)
-    return Buffer.from(finalMix.buffer)
+
+    // Soft clip the final mix — tanh keeps peaks musical rather than harsh
+    for (let i = 0; i < totalSamples; i++) {
+      mix[i] = Math.tanh(mix[i])
+    }
+
+    return Buffer.from(mix.buffer)
   }
 }
 

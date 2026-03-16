@@ -173,13 +173,18 @@ class MusicalTyping {
     }
   }
 
-  static playIndividualNote(frequency, duration, options) {
-    const noteResult = MusicSynth.generateNote(frequency, duration, 0, options)
+  static async playIndividualNote(midiNote, duration, options) {
+    const SoundFont = require('./SoundFont')
+    if (!SoundFont.isReady) {
+      vscode.window.setStatusBarMessage('🎹 Downloading piano samples...', 2000)
+      await SoundFont.waitUntilReady()
+    }
+    const noteResult = MusicSynth.generateNote(midiNote, duration, 0, options)
     const pcmBuffer = Buffer.from(noteResult.floatBuffer.buffer)
     Speaker.sendToMultipleStreamsSpeaker(pcmBuffer)
 
     // Visual feedback
-    const noteName = MusicalTyping.#frequencyToNoteName(frequency)
+    const noteName = MusicalTyping.#frequencyToNoteName(midiNote.frequency)
     vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
   }
 

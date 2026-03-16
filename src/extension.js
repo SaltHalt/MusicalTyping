@@ -2,6 +2,7 @@ const vscode = require('vscode')
 
 const MusicTyping = require('./MusicTyping')
 const SnowEngine = require('./SnowEngine')
+const SoundFont = require('./SoundFont')
 const Speaker = require('./Speaker')
 const WebviewProvider = require('./WebviewProvider')
 
@@ -15,6 +16,9 @@ async function activate(context) {
   statusBarItem.color = '#ffbbff'
   statusBarItem.command = 'akazas-love.showPanel'
   statusBarItem.show()
+
+  // Kick off soundfont sample download/load in background
+  SoundFont.init(context).catch(e => console.error('SoundFont init failed:', e))
 
   Speaker.setupSpeaker(context, statusBarItem).then(() => vscode.window.setStatusBarMessage('🔊 play-buffer ready', 3000)
   ).catch(() => vscode.window.setStatusBarMessage('⚠️ play-buffer setup failed', 3000))
