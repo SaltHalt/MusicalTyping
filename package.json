@@ -350,7 +350,7 @@
     "@types/node": "24.x",
     "@types/vscode": "^1.104.0",
     "@vscode/vsce": "^3.6.2",
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.25.12",
     "eslint": "^9.37.0",
     "minify": "^14.1.0",
     "ovsx": "^0.10.6"
