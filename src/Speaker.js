@@ -6,19 +6,12 @@ const vscode = require('vscode')
 
 class Speaker {
 
-  static #PLAY_BUFFER_MODE = '--stream-callback'
-
   static #binaryPath = null
   static #binaryReady = false
   static #binaryDownloading = false
 
-  // Store the last playProcess for stopping
+  // The single process used for full-song playback (stoppable)
   static #currentPlayProcess = null
-
-  // Round-robin pool of up to 100 persistent play-buffer stream processes
-  static #streamPool = []
-  static #streamPoolIdx = 0
-  static #MAX_STREAMS = 100
 
   static async setupSpeaker(context, statusBarItem) {
     if (!this.#assetName) {
@@ -27,51 +20,15 @@ class Speaker {
     }
     try {
       if (!Speaker.#binaryReady) await Speaker.#downloadPlayBuffer(context)
-      Speaker.startPersistentProcesses(statusBarItem)
+      statusBarItem.text = 'Akaza: Ready ❄️'
+      statusBarItem.tooltip = 'Akaza extension is ready!'
     } catch (e) {
       console.error('Failed to setup Speaker:', e)
     }
   }
 
-  static startPersistentProcesses(statusBarItem) {
-    try {
-      if (Speaker.#streamPool.length < Speaker.#MAX_STREAMS) {
-        for (let i = Speaker.#streamPool.length; i < Speaker.#MAX_STREAMS; i++) {
-          const proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'ignore'] })
-          proc.on('error', (err) => {
-            console.error('play-buffer pool process error:', err)
-            Speaker.#streamPool[i] = null
-          })
-          proc.on('exit', () => {
-            console.info('play-buffer pool process exited')
-            Speaker.#streamPool[i] = null
-          })
-          Speaker.#streamPool.push(proc)
-        }
-        // Add a delay before marking ready
-        setTimeout(() => {
-          statusBarItem.text = 'Akaza: Ready ❄️'
-          statusBarItem.tooltip = 'Akaza extension is ready!'
-        }, 2000) // 2 second delay
-      }
-    } catch (err2) {
-      console.error('Failed to start play-buffer process:', err2)
-      vscode.window.showWarningMessage('Failed to start play-buffer process: ' + err2.message)
-    }
-  }
-
   static stopAllProcesses() {
     try {
-      // Kill all stream pool processes
-      for (let proc of Speaker.#streamPool) {
-        if (proc && !proc.killed) {
-          proc.stdin.end()
-          proc.kill()
-        }
-      }
-      Speaker.#streamPool = []
-      Speaker.#streamPoolIdx = 0
-
       Speaker.#killCurrentProcess()
     } catch (e) {
       console.error('Failed to stop play-buffer processes:', e)
@@ -88,18 +45,9 @@ class Speaker {
       console.warn('Speaker.sendToSpeaker: Invalid buffer', buffer)
       return
     }
-    // PCM format checks (assume 16-bit signed, 44.1kHz, mono)
-    // Optionally, warn if buffer length is suspiciously small
-    const expectedSampleRate = 44100
-    const expectedChannels = 1
-    const expectedBitDepth = 16
-    const isBufferTooShort = buffer.length < expectedSampleRate * expectedChannels * (expectedBitDepth / 8) * 0.1
-    if (isBufferTooShort) console.warn('PCM buffer is very short (less than 0.1s)')
 
     try {
-      // Kill any previous playProcess
       Speaker.#killCurrentProcess()
-      // The method sendToSpeaker should be generic but well only one task calls it so it is fine
       vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
 
       const playProcess = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
@@ -113,7 +61,7 @@ class Speaker {
       playProcess.on('exit', (code, signal) => {
         Speaker.#currentPlayProcess = null
         vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-        // Only call onFinish if the process ended naturally (not killed by stopToSpeaker)
+        // Only fire onFinish for natural completion, not when killed by stopToSpeaker
         if (signal == null && onFinish) onFinish()
       })
     } catch (err2) {
@@ -133,31 +81,21 @@ class Speaker {
     await Speaker.#downloadPlayBuffer(context, true)
   }
 
-  static sendToMultipleStreamsSpeaker(buffer) {
-    // Send buffer to next process in pool (round robin)
-    let proc = Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS]
-    if (!proc || proc.killed) {
-      // Restart dead process
-      try {
-        proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'ignore'] })
-        proc.on('error', (err) => {
-          console.error('play-buffer pool process error:', err)
-        })
-        proc.on('exit', () => {
-          Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS] = null
-        })
-        Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS] = proc
-      } catch (e) {
-        console.error('Failed to restart pool process:', e)
-        return
-      }
-    }
+  // Spawn a fresh process per note so each gets its own stdin pipe.
+  // The persistent pool approach caused all notes to sound identical because
+  // Node drops data silently when stdin's internal buffer is full (backpressure),
+  // meaning only the first chunk written to each process was ever played.
+  static sendNoteToSpeaker(buffer) {
+    if (!Speaker.#binaryPath || !fs.existsSync(Speaker.#binaryPath)) return
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) return
     try {
+      const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
       proc.stdin.write(buffer)
+      proc.stdin.end()
+      proc.on('error', (err) => console.error('play-buffer note process error:', err))
     } catch (e) {
-      console.error('Speaker.sendToMultipleStreamsSpeaker write error:', e)
+      console.error('Speaker.sendNoteToSpeaker error:', e)
     }
-    Speaker.#streamPoolIdx = (Speaker.#streamPoolIdx + 1) % Speaker.#MAX_STREAMS
   }
 
   static async #downloadPlayBuffer(context, force = false) {
