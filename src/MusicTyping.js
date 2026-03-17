@@ -26,8 +26,10 @@ class MusicalTyping {
   static #playStartTime   // Date.now() when playback began
   static #totalDuration   // seconds, from MusicSynth
 
+  static #chunkLength = 180 // How many notes are added with each press, in ms.
   static #queueEnd = 0    // Date.now() ms when the current note queue will finish
-  static #MAX_QUEUE_MS = 500  // max lookahead — keypresses beyond this are ignored
+  static #MAX_QUEUE_MS = 1000  // max lookahead — keypresses beyond this are ignored
+  static #midiDuration = 0    // total duration of current MIDI file in seconds
 
   static init(context, webviewProvider) {
     this.#context = context
@@ -86,6 +88,9 @@ class MusicalTyping {
     const elapsed = (this.#isPlaying && this.#playStartTime)
       ? (Date.now() - this.#playStartTime) / 1000
       : null
+    const midiProgress = this.#notes.length > 0
+      ? this.#currentNoteIdx / this.#notes.length
+      : 0
     return {
       songs: this.#songList.map(s => s.name),
       currentIdx: this.#currentSongIdx,
@@ -93,7 +98,9 @@ class MusicalTyping {
       loop: this.#loop,
       isPlaying: this.#isPlaying,
       elapsed,
-      totalDuration: this.#totalDuration
+      totalDuration: this.#totalDuration,
+      midiProgress,         // 0..1 fraction through the MIDI note sequence
+      midiDuration: this.#midiDuration
     }
   }
 
@@ -104,6 +111,7 @@ class MusicalTyping {
 
     this.#currentSongIdx = idx
     this.#currentNoteIdx = 0
+    this.#queueEnd = 0
     this.#loadCurrentMidi()
     this.#webviewProvider?.postSongList()
 
@@ -222,35 +230,92 @@ class MusicalTyping {
   }
 
   static #playMidiNotes() {
+    if (this.#notes.length === 0) return
+
     const now = Date.now()
+    const queueAhead = this.#queueEnd - now  // ms of audio already queued but not yet played
 
-    // If queue is already more than #MAX_QUEUE_MS ahead, ignore this keypress
-    if (this.#queueEnd - now > this.#MAX_QUEUE_MS) return
+    // --- Rule 2: queue is full ---
+    // More than 1000ms is queued. Only exception (Rule 3): the queue is long because
+    // there is a single sustained note — detected by checking if the LAST released note
+    // group has a duration longer than the queue itself (i.e. no subsequent notes queued).
+    if (queueAhead > this.#MAX_QUEUE_MS) {
+      // Check if there are any pending note groups beyond the current idx
+      // If #currentNoteIdx is still on the same group that filled the queue,
+      // then queueAhead came entirely from one long note — allow a single extra.
+      const prevIdx = this.#currentNoteIdx === 0
+        ? this.#notes.length - 1
+        : this.#currentNoteIdx - 1
+      const lastReleasedDuration = Math.max(
+        ...this.#notes[prevIdx].map(n => Math.max(n.duration, 0.3))
+      ) * 1000
+      // If the last note alone accounts for more than the queue ahead, we are
+      // sustaining a long note with nothing else queued — allow the exception.
+      const sustainingLongNote = lastReleasedDuration >= queueAhead
+      if (!sustainingLongNote) return
+    }
 
-    // if (this.#currentNoteIdx >= this.#notes.length) this.#currentNoteIdx = 0 ##
-    const chordNotes = this.#notes[this.#currentNoteIdx]
+    // --- End of MIDI: advance to next song ---
+    if (this.#currentNoteIdx >= this.#notes.length) {
+      this.#currentNoteIdx = 0
+      this.#queueEnd = 0
+      this.#advanceToNextSong()
+      this.#webviewProvider?.postSongList()
+      return  // skip this keypress; next one will start the new song
+    }
 
-    // Delay until the current queue drains
-    const delayMs = Math.max(0, this.#queueEnd - now)
+    // --- Rule 1: collect all notes starting within the next 40ms window ---
+    const windowStart = this.#notes[this.#currentNoteIdx][0].time
+    const windowEnd = windowStart + this.#chunkLength/1000  // 40ms window in seconds
 
-    // Chord duration is the longest note in the group
-    const chordDuration = Math.max(...chordNotes.map(n => Math.max(n.duration, 0.3)))
+    // Collect consecutive note groups whose time falls within the window
+    let windowGroups = []
+    let scanIdx = this.#currentNoteIdx
+    while (scanIdx < this.#notes.length &&
+           this.#notes[scanIdx][0].time < windowEnd) {
+      windowGroups.push(this.#notes[scanIdx])
+      scanIdx++
+    }
 
-    // Advance the queue end by this chord's duration
-    this.#queueEnd = Math.max(now, this.#queueEnd) + chordDuration * 1000
+    // If no notes fell in the window (shouldn't happen since we start from current),
+    // fall back to releasing just the single next note group.
+    if (windowGroups.length === 0) {
+      windowGroups = [this.#notes[this.#currentNoteIdx]]
+      scanIdx = this.#currentNoteIdx + 1
+    }
 
-    chordNotes.forEach(note => {
-      const playDuration = Math.max(note.duration, 0.3)
-      this.playIndividualNote(note.midi, playDuration, delayMs, {
-        velocity: note.velocity * this.#volume,
-        chordScale: note.chordScale
+    // Schedule all collected groups, spacing them by their real MIDI time offsets
+    // relative to the window start, so rapid arpeggios sound correct.
+    const delayBase = Math.max(0, this.#queueEnd - now)
+
+    for (const group of windowGroups) {
+      // Offset within the window (ms), preserving inter-note timing
+      const groupOffset = (group[0].time - windowStart) * 1000
+      const delayMs = delayBase + groupOffset
+
+      const groupDuration = Math.max(...group.map(n => Math.max(n.duration, 0.3)))
+
+      group.forEach(note => {
+        const playDuration = Math.max(note.duration, 0.3)
+        this.playIndividualNote(note.midi, playDuration, delayMs, {
+          velocity: note.velocity * this.#volume,
+          chordScale: note.chordScale
+        })
       })
-    })
+    }
 
-    const noteNames = chordNotes.map(n => n.name).join('+')
+    // Advance queue end past the last group in the window
+    const lastGroup = windowGroups[windowGroups.length - 1]
+    const lastGroupDuration = Math.max(...lastGroup.map(n => Math.max(n.duration, 0.3)))
+    const lastGroupOffset = (lastGroup[0].time - windowStart) * 1000
+    this.#queueEnd = Math.max(now, this.#queueEnd) + lastGroupOffset + lastGroupDuration * 1000
+
+    // Update note index and push progress to webview
+    this.#currentNoteIdx = scanIdx
+    this.#webviewProvider?.postSongList()
+
+    const noteNames = windowGroups.flatMap(g => g.map(n => n.name)).join('+')
     vscode.window.setStatusBarMessage(`🎵 ${noteNames}`, 1500)
-
-    this.#currentNoteIdx++
   }
 
   static #loadMidiFile(midiPath) {
@@ -286,7 +351,11 @@ class MusicalTyping {
         }))
       })
 
-      console.log(`Loaded MIDI file with ${this.#notes.length} note groups`)
+      // Store total MIDI duration for progress tracking
+      const allTimes = allNotes.map(n => n.time + n.duration)
+      this.#midiDuration = allTimes.length > 0 ? Math.max(...allTimes) : 0
+
+      console.log(`Loaded MIDI file with ${this.#notes.length} note groups, duration ${this.#midiDuration.toFixed(1)}s`)
     })
   }
 

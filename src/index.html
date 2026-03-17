@@ -52,7 +52,7 @@
       justify-content: center;
       position: relative;
       width: 100vw;
-      height: 10vh;
+      height: 100vh;
     }
 
     /* ── Player controls ── */
@@ -104,6 +104,20 @@
       color: var(--vscode-descriptionForeground, #777);
       text-align: right;
       min-height: 13px;
+    }
+
+    .progress-label {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground, #666);
+      margin-bottom: 2px;
+    }
+
+    #midi-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--vscode-charts-green, #4caf50);
+      border-radius: 2px;
+      transition: width 0.2s linear;
     }
 
     #song-select {
@@ -163,8 +177,11 @@
   <!-- Song player controls -->
   <div id="player">
     <div id="now-playing">—</div>
+    <div class="progress-label">▶ audio</div>
     <div id="progress-wrap"><div id="progress-bar"></div></div>
     <div id="time-label"></div>
+    <div class="progress-label">🎹 typing</div>
+    <div id="progress-wrap" style="margin-bottom:2px"><div id="midi-progress-bar"></div></div>
     <select id="song-select" title="Select song"></select>
     <div class="player-row">
       <button class="ctrl-btn" id="btn-shuffle" title="Shuffle">🔀 Shuffle</button>
@@ -332,6 +349,7 @@
 
     const nowPlaying = document.getElementById('now-playing')
     const progressBar = document.getElementById('progress-bar')
+    const midiProgressBar = document.getElementById('midi-progress-bar')
     const timeLabel = document.getElementById('time-label')
 
     function fmt(secs) {
@@ -368,12 +386,16 @@
         nowPlaying.classList.remove('active')
       }
 
-      // Progress bar + time
+      // Audio playback progress bar
       const elapsed = msg.elapsed ?? 0
       const total = msg.totalDuration ?? 0
       const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0
       progressBar.style.width = `${pct}%`
       timeLabel.textContent = total > 0 ? `${fmt(elapsed)} / ${fmt(total)}` : ''
+
+      // MIDI typing progress bar
+      const midiPct = Math.min(100, (msg.midiProgress ?? 0) * 100)
+      midiProgressBar.style.width = `${midiPct}%`
     }
 
     // ── Extension message handler ──────────────────────────────────────────────
