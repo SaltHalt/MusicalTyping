@@ -26,6 +26,9 @@ class MusicalTyping {
   static #playStartTime   // Date.now() when playback began
   static #totalDuration   // seconds, from MusicSynth
 
+  static #queueEnd = 0    // Date.now() ms when the current note queue will finish
+  static #MAX_QUEUE_MS = 500  // max lookahead — keypresses beyond this are ignored
+
   static init(context, webviewProvider) {
     this.#context = context
     this.#webviewProvider = webviewProvider
@@ -173,7 +176,7 @@ class MusicalTyping {
     }
   }
 
-  static async playIndividualNote(midiNote, duration, options) {
+  static async playIndividualNote(midiNote, duration, delayMs, options) {
     const SoundFont = require('./SoundFont')
     if (!SoundFont.isReady) {
       vscode.window.setStatusBarMessage('🎹 Downloading piano samples...', 2000)
@@ -181,10 +184,12 @@ class MusicalTyping {
     }
     const noteResult = MusicSynth.generateNote(midiNote, duration, 0, options)
     const pcmBuffer = Buffer.from(noteResult.floatBuffer.buffer)
-    Speaker.sendNoteToSpeaker(pcmBuffer)
 
-    const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
-    vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
+    setTimeout(() => {
+      Speaker.sendNoteToSpeaker(pcmBuffer)
+      const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
+      vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
+    }, delayMs)
   }
 
   static #loadConfiguration() {
@@ -217,20 +222,33 @@ class MusicalTyping {
   }
 
   static #playMidiNotes() {
-    if (this.#currentNoteIdx >= this.#notes.length) this.#currentNoteIdx = 0
+    const now = Date.now()
+
+    // If queue is already more than #MAX_QUEUE_MS ahead, ignore this keypress
+    if (this.#queueEnd - now > this.#MAX_QUEUE_MS) return
+
+    // if (this.#currentNoteIdx >= this.#notes.length) this.#currentNoteIdx = 0 ##
     const chordNotes = this.#notes[this.#currentNoteIdx]
 
+    // Delay until the current queue drains
+    const delayMs = Math.max(0, this.#queueEnd - now)
+
+    // Chord duration is the longest note in the group
+    const chordDuration = Math.max(...chordNotes.map(n => Math.max(n.duration, 0.3)))
+
+    // Advance the queue end by this chord's duration
+    this.#queueEnd = Math.max(now, this.#queueEnd) + chordDuration * 1000
+
     chordNotes.forEach(note => {
-      const playDuration = Math.max(note.duration, .3)
-      this.playIndividualNote(note.midi, playDuration, {
+      const playDuration = Math.max(note.duration, 0.3)
+      this.playIndividualNote(note.midi, playDuration, delayMs, {
         velocity: note.velocity * this.#volume,
         chordScale: note.chordScale
       })
     })
 
     const noteNames = chordNotes.map(n => n.name).join('+')
-    const frequencies = chordNotes.map(n => `${n.frequency.toFixed(1)}Hz`).join(', ')
-    vscode.window.setStatusBarMessage(`🎵 ${noteNames} (${frequencies})`, 1500)
+    vscode.window.setStatusBarMessage(`🎵 ${noteNames}`, 1500)
 
     this.#currentNoteIdx++
   }
