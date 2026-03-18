@@ -71,7 +71,11 @@ class Speaker {
     const startSample = Speaker.#mixHead + aheadSamples
 
     // Reject if too far ahead
-    if (startSample - Speaker.#writeHead > MAX_AHEAD_SAMPLES) return false
+    if (startSample - Speaker.#writeHead > MAX_AHEAD_SAMPLES) {
+      const overMs = ((startSample - Speaker.#writeHead - MAX_AHEAD_SAMPLES) / SAMPLE_RATE * 1000).toFixed(1)
+      console.log(`[Speaker.mixNote] REJECTED: ${overMs}ms over limit, aheadMs=${aheadMs.toFixed(1)}, queueAheadMs=${Speaker.queueAheadMs.toFixed(1)}`)
+      return false
+    }
 
     // Mix (add) samples into the ring buffer
     for (let i = 0; i < floatBuffer.length; i++) {
@@ -86,6 +90,7 @@ class Speaker {
     const noteEnd = startSample + floatBuffer.length
     if (noteEnd > Speaker.#mixHead) Speaker.#mixHead = noteEnd
 
+    console.log(`[Speaker.mixNote] mixed: aheadMs=${aheadMs.toFixed(1)} samples=${floatBuffer.length} queueNow=${Speaker.queueAheadMs.toFixed(1)}ms`)
     return true
   }
 
@@ -159,13 +164,13 @@ class Speaker {
       }
     })
 
-    // Give the process a moment to initialise its audio device
+    // Give the process a moment to initialise its audio device before we
+    // start pumping. Both heads start at the same position so queueAheadMs=0
+    // and the first note plays immediately with no artificial offset.
     setTimeout(() => {
       Speaker.#streamReady = true
-      // Prefill ~200ms of silence so the audio device has something to consume
-      // before notes arrive. This primes the buffer and avoids a startup gap.
       Speaker.#writeHead = 0
-      Speaker.#mixHead = Math.floor(0.2 * SAMPLE_RATE)
+      Speaker.#mixHead = 0
       Speaker.#startDrain()
     }, 200)
   }

@@ -26,7 +26,6 @@ class MusicalTyping {
   static #playStartTime   // Date.now() when playback began
   static #totalDuration   // seconds, from MusicSynth
 
-  static #chunkLength = 180 // How many notes are added with each press, in ms.
   static #MAX_QUEUE_MS = 1000  // max lookahead in ms — keypresses beyond this are ignored
   static #midiDuration = 0    // total duration of current MIDI file in seconds
 
@@ -229,7 +228,10 @@ class MusicalTyping {
     const queueAheadMs = Speaker.queueAheadMs
 
     // --- Rule 2 + 3: block if queue is full, unless buffer is empty ---
-    if (queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0) return
+    if (queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0) {
+      console.log(`[blocked] queueAheadMs=${queueAheadMs.toFixed(1)} noteIdx=${this.#currentNoteIdx}/${this.#notes.length}`)
+      return
+    }
 
     // --- End of MIDI: advance to next song ---
     if (this.#currentNoteIdx >= this.#notes.length) {
@@ -241,7 +243,7 @@ class MusicalTyping {
 
     // --- Rule 1: collect all notes starting within the next 40ms window ---
     const windowStart = this.#notes[this.#currentNoteIdx][0].time
-    const windowEnd = windowStart + this.#chunkLength/1000  // 40ms window in seconds
+    const windowEnd = windowStart + 0.040
 
     let windowGroups = []
     let scanIdx = this.#currentNoteIdx
@@ -273,6 +275,12 @@ class MusicalTyping {
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()
 
+    // Log released notes for comparison against MIDI file
+    const released = windowGroups.flatMap(g => g.map(n =>
+      `${n.name}(${n.midi})@${n.time.toFixed(3)}s+${(n.time + n.duration).toFixed(3)}s`
+    ))
+    console.log(`[release] idx=${this.#currentNoteIdx} queueMs=${queueAheadMs.toFixed(1)} notes=${released.join(' ')}`)
+
     const noteNames = windowGroups.flatMap(g => g.map(n => n.name)).join('+')
     vscode.window.setStatusBarMessage(`🎵 ${noteNames}`, 1500)
   }
@@ -281,7 +289,8 @@ class MusicalTyping {
     const midiData = fs.readFileSync(midiPath)
     const midi = new Midi(midiData)
 
-    let allNotes = []
+    // Collect notes from ALL tracks first, then group
+    const allNotes = []
     midi.tracks.forEach(track => {
       track.notes.forEach(note => {
         allNotes.push({
@@ -293,29 +302,29 @@ class MusicalTyping {
           velocity: note.velocity * 1.5
         })
       })
-      const timeMap = {}
-      allNotes.forEach(note => {
-        const timeKey = note.time
-        if (!timeMap[timeKey]) timeMap[timeKey] = []
-        timeMap[timeKey].push(note)
-      })
-
-      const timeFrames = Object.keys(timeMap).map(Number).sort((a, b) => a - b)
-      this.#notes = timeFrames.map(t => {
-        const chordNotes = timeMap[t]
-        const chordSize = chordNotes.length
-        return chordNotes.map(note => ({
-          ...note,
-          chordScale: 1 / chordSize
-        }))
-      })
-
-      // Store total MIDI duration for progress tracking
-      const allTimes = allNotes.map(n => n.time + n.duration)
-      this.#midiDuration = allTimes.length > 0 ? Math.max(...allTimes) : 0
-
-      console.log(`Loaded MIDI file with ${this.#notes.length} note groups, duration ${this.#midiDuration.toFixed(1)}s`)
     })
+
+    // Group by exact start time (simultaneous notes across any track form one group)
+    const timeMap = {}
+    allNotes.forEach(note => {
+      if (!timeMap[note.time]) timeMap[note.time] = []
+      timeMap[note.time].push(note)
+    })
+
+    const timeFrames = Object.keys(timeMap).map(Number).sort((a, b) => a - b)
+    this.#notes = timeFrames.map(t => {
+      const chordNotes = timeMap[t]
+      return chordNotes.map(note => ({
+        ...note,
+        chordScale: 1 / chordNotes.length
+      }))
+    })
+
+    // Store total MIDI duration for progress tracking
+    const allTimes = allNotes.map(n => n.time + n.duration)
+    this.#midiDuration = allTimes.length > 0 ? Math.max(...allTimes) : 0
+
+    console.log(`Loaded MIDI: ${midi.tracks.length} tracks, ${allNotes.length} notes, ${this.#notes.length} time groups, ${this.#midiDuration.toFixed(1)}s`)
   }
 
   static #frequencyToNoteName(frequency) {
