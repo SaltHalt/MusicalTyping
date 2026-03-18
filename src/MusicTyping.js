@@ -28,6 +28,7 @@ class MusicalTyping {
 
   static #MAX_QUEUE_MS = 1000  // max lookahead in ms — keypresses beyond this are ignored
   static #midiDuration = 0    // total duration of current MIDI file in seconds
+  static #queueEndMs = 0      // absolute Date.now() timestamp when queued audio ends
 
   static init(context, webviewProvider) {
     this.#context = context
@@ -109,6 +110,7 @@ class MusicalTyping {
 
     this.#currentSongIdx = idx
     this.#currentNoteIdx = 0
+    this.#queueEndMs = 0
     this.#loadCurrentMidi()
     this.#webviewProvider?.postSongList()
 
@@ -210,22 +212,26 @@ class MusicalTyping {
     this.#context.subscriptions.push(changeDisposable, configDisposable)
   }
 
-  // Mix a single note into the Speaker ring buffer at the given ahead-offset.
-  static #mixNote(midiNote, duration, aheadMs, options) {
+  // Play a single note after delayMs, using a fresh play-buffer process.
+  static #scheduleNote(midiNote, duration, delayMs, options) {
     const SoundFont = require('./SoundFont')
     if (!SoundFont.isReady) return
     const noteResult = MusicSynth.generateNote(midiNote, duration, 0, options)
-    Speaker.mixNote(noteResult.floatBuffer, aheadMs)
-    const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
-    vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
+    const pcmBuffer = Buffer.from(noteResult.floatBuffer.buffer)
+    const fire = () => {
+      Speaker.sendNoteToSpeaker(pcmBuffer)
+      const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
+      vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
+    }
+    if (delayMs <= 0) fire()
+    else setTimeout(fire, delayMs)
   }
 
   static #playMidiNotes() {
     if (this.#notes.length === 0) return
 
-    // Use Speaker's live queue depth as the source of truth.
-    // It decreases naturally as the drain loop consumes audio.
-    const queueAheadMs = Speaker.queueAheadMs
+    const now = Date.now()
+    const queueAheadMs = Math.max(0, this.#queueEndMs - now)
 
     // --- Rule 2 + 3: block if queue is full, unless buffer is empty ---
     if (queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0) {
@@ -257,20 +263,25 @@ class MusicalTyping {
       scanIdx = this.#currentNoteIdx + 1
     }
 
-    // Mix each group into the ring buffer at sample-accurate positions.
-    // aheadMs for each group = current live queue depth + intra-window offset.
+    // Schedule each group with a delay = current queue depth + intra-window offset.
     for (const group of windowGroups) {
       const groupOffsetMs = (group[0].time - windowStart) * 1000
-      const aheadMs = queueAheadMs + groupOffsetMs
+      const delayMs = queueAheadMs + groupOffsetMs
 
       group.forEach(note => {
         const playDuration = Math.max(note.duration, 0.3)
-        this.#mixNote(note.midi, playDuration, aheadMs, {
+        this.#scheduleNote(note.midi, playDuration, delayMs, {
           velocity: note.velocity * this.#volume,
           chordScale: note.chordScale
         })
       })
     }
+
+    // Advance #queueEndMs past the last group in this window
+    const lastGroup = windowGroups[windowGroups.length - 1]
+    const lastOffsetMs = (lastGroup[0].time - windowStart) * 1000
+    const lastDurationMs = Math.max(...lastGroup.map(n => Math.max(n.duration, 0.3))) * 1000
+    this.#queueEndMs = Math.max(now, this.#queueEndMs) + lastOffsetMs + lastDurationMs
 
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()
