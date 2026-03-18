@@ -45,7 +45,7 @@
       "activitybar": [
         {
           "id": "akazas-love-webview",
-          "title": "Welcome Home",
+          "title": "Piano Typing",
           "icon": "media/akaza.svg"
         }
       ]
@@ -55,7 +55,7 @@
         {
           "type": "webview",
           "id": "akazas-love.webview",
-          "name": "Hakuji 🎆",
+          "name": "Webview",
           "icon": "media/akaza.svg"
         }
       ]
@@ -63,31 +63,26 @@
     "commands": [
       {
         "command": "akazas-love.playSong",
-        "title": "▶️ Play Akaza's Love Theme",
-        "icon": "$(play)",
-        "category": "Akaza's Love"
+        "title": "Play demo",
+        "icon": "$(play)"
       },
       {
         "command": "akazas-love.stopSong",
-        "title": "⏹️ Stop Akaza's Love Theme",
-        "icon": "$(stop)",
-        "category": "Akaza's Love"
+        "title": "Stop demo",
+        "icon": "$(stop)"
       },
       {
         "command": "akazas-love.toggleMusicTyping",
-        "title": "🎹 Toggle Music Typing",
-        "category": "Akaza's Love"
+        "title": "Toggle Music Typing"
       },
       {
         "command": "akazas-love.showPanel",
-        "title": "💖 Show Akaza's Love Panel",
-        "category": "Akaza's Love"
+        "title": "Show web panel"
       },
       {
         "command": "akazas-love.openSettings",
-        "title": "⚙️ Open Akaza's Love Settings",
-        "icon": "$(gear)",
-        "category": "Akaza's Love"
+        "title": "Open Musical Typing Settings",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -116,24 +111,24 @@
         "akazas-love.musicTyping": {
           "type": "boolean",
           "default": true,
-          "description": "🎹 Enable musical typing sounds"
+          "description": "Enable musical typing sounds"
         },
         "akazas-love.volume": {
           "type": "number",
           "default": 0.1,
           "minimum": 0,
           "maximum": 1,
-          "description": "🔊 Volume level for musical notes (0.0 to 1.0)"
+          "description": "Volume level for musical notes (0.0 to 1.0)"
         },
         "akazas-love.shuffle": {
           "type": "boolean",
           "default": false,
-          "description": "🔀 Shuffle through songs in the playlist"
+          "description": "Shuffle through songs in the playlist"
         },
         "akazas-love.loop": {
           "type": "boolean",
           "default": true,
-          "description": "🔁 Loop the playlist when it reaches the end"
+          "description": "Loop the playlist when it reaches the end"
         }
       }
     }
