@@ -1,154 +1,83 @@
 const vscode = require('vscode')
 const path = require('path')
-const TypingRate = require('./TypingRate')
 
 class WebviewProvider {
-
   #context
-  #typingRate
   #webview
-  #progressInterval  // polls playback position while a song is playing
+  // Minimal inline typing-rate tracker (was TypingRate.js)
+  #keystrokeTs = []
 
-  /** @param {vscode.ExtensionContext} context */
-  constructor(context) {
-    this.#context = context
-    this.#typingRate = new TypingRate()
-  }
+  constructor(context) { this.#context = context }
 
-  /** @param {vscode.WebviewView} webviewView */
   resolveWebviewView(webviewView) {
     webviewView.webview.options = { enableScripts: true }
-    const imgPath = webviewView.webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.#context.extensionPath, 'media', 'happy.png'))
-    )
-    webviewView.webview.html = this.#getHtmlFromFile(imgPath)
-
-    // Listen for config changes and typing events from extension
+    webviewView.webview.html = this.#getHtml()
     this.#webview = webviewView.webview
 
-    // Handle messages from the webview UI
     webviewView.webview.onDidReceiveMessage(msg => {
       if (!msg?.type) return
-      // Lazy require to avoid circular dependency at module load time
-      const MusicTyping = require('./MusicTyping')
+      const MT = require('./MusicTyping')
       switch (msg.type) {
-        case 'SELECT_SONG':
-          MusicTyping.selectSong(msg.idx)
-          break
-        case 'TOGGLE_SHUFFLE':
-          MusicTyping.setShuffle(msg.value)
-          break
-        case 'TOGGLE_LOOP':
-          MusicTyping.setLoop(msg.value)
-          break
-        case 'PLAY':
-          vscode.commands.executeCommand('akazas-love.playSong')
-          break
-        case 'STOP':
-          vscode.commands.executeCommand('akazas-love.stopSong')
-          break
+        case 'SELECT_SONG': MT.selectSong(msg.idx); break
+        case 'TOGGLE_SHUFFLE': MT.setShuffle(msg.value); break
+        case 'TOGGLE_LOOP': MT.setLoop(msg.value); break
+        case 'PLAY': vscode.commands.executeCommand('akazas-love.playSong'); break
+        case 'STOP': vscode.commands.executeCommand('akazas-love.stopSong'); break
       }
     })
 
-    const d = webviewView.onDidChangeVisibility(() => {
-      // Inject initial params again, since it got reset when hidden
-      if (webviewView.visible) {
-        this.#postMessage(this.#getConfigs())
-        this.postSongList()
-      }
-    })
-
-    this.#postMessage(this.#getConfigs())
+    this.#context.subscriptions.push(
+      webviewView.onDidChangeVisibility(() => {
+        if (webviewView.visible) { this.#postMessage(this.#getConfig()); this.postSongList() }
+      })
+    )
+    this.#postMessage(this.#getConfig())
     this.postSongList()
-    this.#context.subscriptions.push(d)
   }
 
   keyPress() {
-    this.#typingRate.recordKeystroke()
-    const typingRate = this.#typingRate.getRate()
-    this.#postMessage({ type: 'KEY', typingRate })
+    const now = Date.now()
+    this.#keystrokeTs.push(now)
+    while (this.#keystrokeTs.length && now - this.#keystrokeTs[0] > 2000) this.#keystrokeTs.shift()
+    const rate = this.#keystrokeTs.length < 2 ? 0 : this.#keystrokeTs.length / 2
+    this.#postMessage({ type: 'KEY', typingRate: rate })
   }
 
-  reloadConfigs() {
-    this.#postMessage({ type: 'CONFIG', ...this.#getConfigs() })
-  }
+  reloadConfigs() { this.#postMessage(this.#getConfig()) }
 
-  // Push current song list + state to the webview
   postSongList() {
-    const MusicTyping = require('./MusicTyping')
-    const state = MusicTyping.getSongList()
-    this.#postMessage({ type: 'SONG_LIST', ...state })
-
-    // Start polling for progress while playing; stop when not
-    if (state.isPlaying && !this.#progressInterval) {
-      this.#progressInterval = setInterval(() => {
-        const s = MusicTyping.getSongList()
-        this.#postMessage({ type: 'SONG_LIST', ...s })
-        if (!s.isPlaying) {
-          clearInterval(this.#progressInterval)
-          this.#progressInterval = null
-        }
-      }, 500)
-    } else if (!state.isPlaying && this.#progressInterval) {
-      clearInterval(this.#progressInterval)
-      this.#progressInterval = null
-    }
+    const MT = require('./MusicTyping')
+    this.#postMessage({ type: 'SONG_LIST', ...MT.getSongList() })
   }
 
-  #getConfigs() {
+  #getConfig() {
     const cfg1 = vscode.workspace.getConfiguration('akazas-love')
     const cfg2 = vscode.workspace.getConfiguration('akazas-love.snowPanelConfigs')
-
-    const colorLight = cfg2.get('colorLight')
-    const colorDark = cfg2.get('colorDark')
-    const themeKind = vscode.window.activeColorTheme.kind
-
-    let color
-    if (colorLight) {
-      if (themeKind === vscode.ColorThemeKind.Light) color = colorLight
-      else color = colorDark
-    } else {
-      if (themeKind === vscode.ColorThemeKind.Light) color = cfg2.inspect('colorLight').defaultValue
-      else color = cfg2.inspect('colorDark').defaultValue
-    }
+    const isLight = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light
+    const hex = cfg2.get(isLight ? 'colorLight' : 'colorDark')
+      || cfg2.inspect(isLight ? 'colorLight' : 'colorDark').defaultValue
     return {
       type: 'CONFIG',
       typingDriven: cfg1.get('typingDriven'),
       density: cfg2.get('density'),
-      color: this.#hexToRgba(color),
-      backgroundColor: cfg2.get('backgroundColor')
+      color: this.#hexToRgba(hex),
+      backgroundColor: cfg2.get('backgroundColor'),
     }
   }
 
-  #getHtmlFromFile(imgSrc) {
+  #getHtml() {
     const fs = require('fs')
-    // To get the absolute path to ./src/index.html
-    const htmlPath = path.join(this.#context.extensionPath, 'dist', 'index.html')
-
-    let html = fs.readFileSync(htmlPath, 'utf8')
-    html = html.replace('{{IMG_SRC}}', imgSrc)
-    return html
+    return fs.readFileSync(path.join(this.#context.extensionPath, 'dist', 'index.html'), 'utf8')
   }
 
-  // Convert hex color to rgba string
   #hexToRgba(hex) {
-    if (!hex) return
-    let c = hex.replace('#', '')
-    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2]
-    if (c.length !== 6) console.error(`invalid hex color: ${hex}, proceeding with 6 characters`)
-    const r = parseInt(c.substring(0, 2), 16)
-    const g = parseInt(c.substring(2, 4), 16)
-    const b = parseInt(c.substring(4, 6), 16)
+    if (!hex) return ''
+    const c = hex.replace('#', '').replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3')
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16))
     return `rgba(${r},${g},${b},`
   }
 
-  /**
-   * Send a message to the webview (from extension)
-   * @param {object} msg
-   */
-  #postMessage(msg) {
-    this.#webview?.postMessage(msg)
-  }
+  #postMessage(msg) { this.#webview?.postMessage(msg) }
 }
 
 module.exports = WebviewProvider

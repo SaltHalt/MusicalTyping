@@ -79,52 +79,6 @@
         "category": "Akaza's Love"
       },
       {
-        "command": "akazas-love.toggleMusicTypingOn",
-        "title": "🎹🎵😊",
-        "icon": "$(music)",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleMusicTypingOff",
-        "title": "⛔🔇🫥",
-        "icon": "$(mute)",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowInEditor",
-        "title": "❄️ Toggle Snowfall in Editor",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowInEditorOn",
-        "title": "❄️ Snowing in Editor",
-        "icon": "$(cloud-download)",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowInEditorOff",
-        "title": "⛔ No Snow in Editor",
-        "icon": "$(cloud-upload)",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowDriven",
-        "title": "⌨️ Toggle Typing-Driven Snowfall",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowDrivenOn",
-        "title": "⌨️ type to make it snow",
-        "icon": "$(keyboard)",
-        "category": "Akaza's Love"
-      },
-      {
-        "command": "akazas-love.toggleSnowDrivenOff",
-        "title": "🌨️ Snowing as always",
-        "icon": "$(cloud)",
-        "category": "Akaza's Love"
-      },
-      {
         "command": "akazas-love.showPanel",
         "title": "💖 Show Akaza's Love Panel",
         "category": "Akaza's Love"
@@ -137,32 +91,7 @@
       }
     ],
     "menus": {
-      "commandPalette": [
-        {
-          "command": "akazas-love.toggleMusicTypingOn",
-          "when": "false"
-        },
-        {
-          "command": "akazas-love.toggleMusicTypingOff",
-          "when": "false"
-        },
-        {
-          "command": "akazas-love.toggleSnowDrivenOn",
-          "when": "false"
-        },
-        {
-          "command": "akazas-love.toggleSnowDrivenOff",
-          "when": "false"
-        },
-        {
-          "command": "akazas-love.toggleSnowInEditorOn",
-          "when": "false"
-        },
-        {
-          "command": "akazas-love.toggleSnowInEditorOff",
-          "when": "false"
-        }
-      ],
+      "commandPalette": [],
       "view/title": [
         {
           "command": "akazas-love.playSong",
@@ -173,36 +102,6 @@
           "command": "akazas-love.stopSong",
           "when": "view == akazas-love.webview && akazas-love.playing == true",
           "group": "navigation@97"
-        },
-        {
-          "command": "akazas-love.toggleMusicTypingOn",
-          "when": "view == akazas-love.webview && config.akazas-love.musicTyping == true",
-          "group": "navigation@98"
-        },
-        {
-          "command": "akazas-love.toggleMusicTypingOff",
-          "when": "view == akazas-love.webview && config.akazas-love.musicTyping == false",
-          "group": "navigation@98"
-        },
-        {
-          "command": "akazas-love.toggleSnowDrivenOn",
-          "when": "view == akazas-love.webview && config.akazas-love.typingDriven == true",
-          "group": "navigation@99"
-        },
-        {
-          "command": "akazas-love.toggleSnowDrivenOff",
-          "when": "view == akazas-love.webview && config.akazas-love.typingDriven == false",
-          "group": "navigation@99"
-        },
-        {
-          "command": "akazas-love.toggleSnowInEditorOn",
-          "when": "view == akazas-love.webview && config.akazas-love.snowInEditor == true",
-          "group": "navigation@100"
-        },
-        {
-          "command": "akazas-love.toggleSnowInEditorOff",
-          "when": "view == akazas-love.webview && config.akazas-love.snowInEditor == false",
-          "group": "navigation@100"
         },
         {
           "command": "akazas-love.openSettings",
@@ -218,102 +117,6 @@
           "type": "boolean",
           "default": true,
           "description": "🎹 Enable musical typing sounds"
-        },
-        "akazas-love.snowInEditor": {
-          "type": "boolean",
-          "default": true,
-          "description": "❄️ Enable snowfall overlay in editors"
-        },
-        "akazas-love.snowEditorConfigs": {
-          "type": "object",
-          "description": "⚙️ Snowfall overlay configuration for editors",
-          "default": {
-            "colorLight": "#7bb3e6",
-            "colorDark": "#ffffffcc",
-            "density": 50,
-            "maxColumns": 160,
-            "size": 10,
-            "speed": 5
-          },
-          "properties": {
-            "colorLight": {
-              "type": "string",
-              "default": "#7bb3e6",
-              "description": "Light theme snowflake color"
-            },
-            "colorDark": {
-              "type": "string",
-              "default": "#ffffffcc",
-              "description": "Dark theme snowflake color"
-            },
-            "density": {
-              "type": "number",
-              "default": 50,
-              "minimum": 0,
-              "maximum": 100,
-              "description": "Number of snowflakes per visible editor"
-            },
-            "maxColumns": {
-              "type": "number",
-              "default": 160,
-              "minimum": 80,
-              "maximum": 500,
-              "description": "Maximum number of columns to consider for snowflake placement (higher = more spread out)"
-            },
-            "size": {
-              "type": "number",
-              "default": 10,
-              "minimum": 5,
-              "maximum": 50,
-              "description": "Base snowflake size in pixels"
-            },
-            "speed": {
-              "type": "number",
-              "default": 5,
-              "minimum": 1,
-              "maximum": 10,
-              "description": "Snowfall speed in lines per second"
-            }
-          }
-        },
-        "akazas-love.snowPanelConfigs": {
-          "type": "object",
-          "description": "⚙️ Snowfall overlay configuration for the webview panel",
-          "default": {
-            "colorLight": "#7bb3e6",
-            "colorDark": "#bcdfff",
-            "density": 50,
-            "backgroundColor": null
-          },
-          "properties": {
-            "colorLight": {
-              "type": "string",
-              "default": "#7bb3e6",
-              "description": "Light theme snowflake color, no alpha channel"
-            },
-            "colorDark": {
-              "type": "string",
-              "default": "#bcdfff",
-              "description": "Dark theme snowflake color, no alpha channel"
-            },
-            "density": {
-              "type": "number",
-              "default": 50,
-              "minimum": 0,
-              "maximum": 100,
-              "description": "Number of snowflakes per visible webview panel"
-            },
-            "backgroundColor": {
-              "type": "string",
-              "default": null,
-              "description": "Webview background color, could be hex or name, e.g. `#ffbbff` or `pink` (null = no background color)"
-            }
-          }
-        },
-        "akazas-love.typingDriven": {
-          "type": "boolean",
-          "default": false,
-          "description": "⌨ Enable typing-driven snow: one snowflake per keypress, speed depends on typing rate (applies to both editor and webview)"
         },
         "akazas-love.volume": {
           "type": "number",

@@ -1,72 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <style>
-    html,
-    body {
-      padding: 0;
-      margin: 0;
-      background: transparent;
-    }
+    html, body { padding: 0; margin: 0; background: transparent; font-family: system-ui, sans-serif; }
 
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: system-ui, sans-serif;
-      position: relative;
-    }
-
-    img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: block;
-      image-rendering: -webkit-optimize-contrast;
-      z-index: 1;
-      background: transparent;
-    }
-
-    h2 {
-      font-size: 13px;
-      font-weight: 600;
-      margin: 4px 0 8px;
-      text-align: center;
-    }
-
-    canvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 2;
-    }
-
-    .wrap {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-    }
-
-    /* ── Player controls ── */
     #player {
       width: 100%;
       box-sizing: border-box;
-      padding: 6px 8px 8px;
-      background: var(--vscode-sideBar-background, #1e1e1e);
-      border-top: 1px solid var(--vscode-widget-border, #444);
+      padding: 8px;
       display: flex;
       flex-direction: column;
       gap: 6px;
-      position: relative;
-      z-index: 10;
     }
 
     #now-playing {
@@ -78,355 +23,114 @@
       text-align: center;
       min-height: 15px;
     }
+    #now-playing.active { color: var(--vscode-foreground, #ccc); }
 
-    #now-playing.active {
-      color: var(--vscode-foreground, #ccc);
-    }
-
-    #progress-wrap {
-      width: 100%;
-      height: 4px;
+    .bar-label { font-size: 10px; color: var(--vscode-descriptionForeground, #666); }
+    .bar-wrap {
+      width: 100%; height: 4px;
       background: var(--vscode-scrollbarSlider-background, #444);
+      border-radius: 2px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; width: 0%;
       border-radius: 2px;
-      overflow: hidden;
+      transition: width 0.4s linear;
     }
+    #audio-bar  { background: var(--vscode-progressBar-background, #0e639c); }
+    #midi-bar   { background: var(--vscode-charts-green, #4caf50); transition-duration: 0.15s; }
 
-    #progress-bar {
-      height: 100%;
-      width: 0%;
-      background: var(--vscode-progressBar-background, #0e639c);
-      border-radius: 2px;
-      transition: width 0.45s linear;
-    }
-
-    #time-label {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, #777);
-      text-align: right;
-      min-height: 13px;
-    }
-
-    .progress-label {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground, #666);
-      margin-bottom: 2px;
-    }
-
-    #midi-progress-bar {
-      height: 100%;
-      width: 0%;
-      background: var(--vscode-charts-green, #4caf50);
-      border-radius: 2px;
-      transition: width 0.2s linear;
-    }
+    #time-label { font-size: 10px; color: var(--vscode-descriptionForeground, #777); text-align: right; }
 
     #song-select {
       width: 100%;
       background: var(--vscode-dropdown-background, #3c3c3c);
       color: var(--vscode-dropdown-foreground, #ccc);
       border: 1px solid var(--vscode-dropdown-border, #555);
-      border-radius: 3px;
-      padding: 3px 5px;
-      font-size: 12px;
-      cursor: pointer;
+      border-radius: 3px; padding: 3px 5px; font-size: 12px; cursor: pointer;
     }
 
-    #song-select:focus {
-      outline: 1px solid var(--vscode-focusBorder, #007fd4);
-    }
-
-    .player-row {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-
-    .ctrl-btn {
+    .row { display: flex; gap: 5px; }
+    .btn {
       flex: 1;
       background: var(--vscode-button-secondaryBackground, #3a3a3a);
       color: var(--vscode-button-secondaryForeground, #ccc);
-      border: 1px solid var(--vscode-button-border, transparent);
-      border-radius: 3px;
-      padding: 3px 0;
-      font-size: 13px;
-      cursor: pointer;
-      text-align: center;
-      transition: background 0.15s;
-      user-select: none;
+      border: 1px solid transparent;
+      border-radius: 3px; padding: 3px 0; font-size: 13px;
+      cursor: pointer; text-align: center; user-select: none;
     }
-
-    .ctrl-btn:hover {
-      background: var(--vscode-button-secondaryHoverBackground, #505050);
-    }
-
-    .ctrl-btn.active {
+    .btn:hover { background: var(--vscode-button-secondaryHoverBackground, #505050); }
+    .btn.active {
       background: var(--vscode-button-background, #0e639c);
       color: var(--vscode-button-foreground, #fff);
-      border-color: var(--vscode-button-background, #0e639c);
     }
   </style>
-  <title>Welcome Home Hakuji</title>
+  <title>Akaza's Love</title>
 </head>
-
 <body>
-  <div class="wrap">
-    <canvas id="snow"
-      style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;"></canvas>
-  </div>
-
-  <!-- Song player controls -->
   <div id="player">
     <div id="now-playing">—</div>
-    <div class="progress-label">▶ audio</div>
-    <div id="progress-wrap"><div id="progress-bar"></div></div>
+    <div class="bar-label">▶ audio</div>
+    <div class="bar-wrap"><div class="bar-fill" id="audio-bar"></div></div>
     <div id="time-label"></div>
-    <div class="progress-label">🎹 typing</div>
-    <div id="progress-wrap" style="margin-bottom:2px"><div id="midi-progress-bar"></div></div>
-    <select id="song-select" title="Select song"></select>
-    <div class="player-row">
-      <button class="ctrl-btn" id="btn-shuffle" title="Shuffle">🔀 Shuffle</button>
-      <button class="ctrl-btn" id="btn-loop" title="Loop">🔁 Loop</button>
+    <div class="bar-label">🎹 typing</div>
+    <div class="bar-wrap"><div class="bar-fill" id="midi-bar"></div></div>
+    <select id="song-select"></select>
+    <div class="row">
+      <button class="btn" id="btn-shuffle">🔀 Shuffle</button>
+      <button class="btn" id="btn-loop">🔁 Loop</button>
     </div>
   </div>
 
-  <div id="debug-console"
-    style="width: 100vw; max-height: 120px; overflow-y: auto; background: #222; color: #bcdfff; font-size: 12px; font-family: monospace; padding: 6px 10px; box-sizing: border-box; opacity: 0.85; position: relative; z-index: 10;">
-  </div>
   <script>
-    (function () {
-      const debugDiv = document.getElementById('debug-console')
-      if (!debugDiv) return
-      debugDiv.style.display = 'none' // Start hidden, comment out to show
-      const origLog = console.log
-      const maxLines = 40
-      console.log = function (...args) {
-        origLog.apply(console, args)
-        const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
-        debugDiv.innerText += msg + '\n'
-        // Keep only last N lines
-        const lines = debugDiv.innerText.split('\n')
-        if (lines.length > maxLines) debugDiv.innerText = lines.slice(-maxLines).join('\n')
-        debugDiv.scrollTop = debugDiv.scrollHeight
-      }
-    })()
-  </script>
-  <script>
-
-    window.addEventListener('error', (event) => {
-      console.error('Global error:', event.error || event.message)
-      // Optionally show a message in the UI or send to extension
-    })
-
-    window.addEventListener('unhandledrejection', (event) => {
-      console.error('Unhandled promise rejection:', event.reason)
-      // Optionally show a message in the UI or send to extension
-    })
-
-    // ── Snow canvas setup ──────────────────────────────────────────────────────
-    const canvas = document.getElementById('snow')
-    const ctx = canvas.getContext('2d')
-    let W = 0
-    let H = 0
-
-    function resize() {
-      W = canvas.width = canvas.clientWidth = window.innerWidth
-      H = canvas.height = canvas.clientHeight = window.innerHeight
-    }
-    window.addEventListener('resize', resize)
-    resize()
-
-    let initiated = false
-    let baseSpeed = 0.5
-    const flakes = []
-    let typingRate = 0
-
-    // Snowflake state
-    let typingDriven
-    let density
-    let snowColor
-
-    function spawnFlake(override = {}) {
-      // override: {speed, y}
-      const v = override.speed ? override.speed : (baseSpeed + Math.random() * 1.2)
-      const y = override.y ? override.y : (-10 - Math.random() * 40)
-      return {
-        x: Math.random() * W,               // Horizontal position (random across canvas width)
-        y,                                  // Vertical position (usually above the visible area)
-        r: 15 + Math.random() * 8,          // Radius (size) of the snowflake, 15-23px
-        v,                                  // Vertical speed (fall speed)
-        a: 0.5 + Math.random() * 0.5,       // Alpha (opacity) for gradient, 0.5-1.0
-        phase: Math.random() * Math.PI * 2, // Initial phase for horizontal drift
-        drift: 0.3 + Math.random() * 0.7    // Amplitude of horizontal drift (sway)
-      }
-    }
-
-    function ensureFlakes() {
-      // console.log('Ensuring flakes, current count:', flakes.length, 'target density:', density)
-      while (flakes.length < density) flakes.push(spawnFlake())
-      if (flakes.length > density) flakes.splice(density)
-    }
-
-    function tick() {
-      if (!typingDriven) ensureFlakes()
-      ctx.clearRect(0, 0, W, H)
-      ctx.globalCompositeOperation = 'lighter'
-      // Calculate boost factor based on typing rate
-      let boost = 1
-      if (typingDriven) {
-        boost = 1 + Math.log1p(1 + typingRate) // You can tune this formula for desired effect
-        // Decay typingRate toward 0 if not updated by keypress
-        // slow down the boost over time - smaller === faster decay
-        typingRate *= 0.5
-        if (typingRate < 0.01) typingRate = 0
-      }
-      for (const f of flakes) {
-        // Move flake down by its speed (falling), apply boost to all flakes
-        f.y += f.v * boost
-        // Move flake horizontally in a sine wave pattern (drifting)
-        f.x += Math.sin(f.phase) * f.drift
-        // Advance the phase for the next frame (controls drift oscillation)
-        f.phase += 0.01 + Math.random() * 0.02
-
-        // If flake falls below the bottom:
-        if (f.y - f.r > H) {
-          if (!typingDriven) {
-            // In normal mode, recycle to the top at a random x
-            f.y = -f.r
-            f.x = Math.random() * W
-          } else {
-            // In typing-driven mode, mark for removal
-            f._remove = true
-          }
-        }
-
-        // If flake drifts off the left/right edge, wrap it to the opposite side
-        if (f.x < -20) f.x = W + 20
-        else if (f.x > W + 20) f.x = -20
-
-        const colorA = `${snowColor}${0.9 * f.a})`
-        const colorB = `${snowColor}0)`
-        const grd = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r)
-        grd.addColorStop(0, colorA)
-        grd.addColorStop(1, colorB)
-        ctx.fillStyle = grd
-        ctx.beginPath()
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      // After updating all flakes, remove those marked for removal (typing-driven mode only)
-      if (typingDriven) {
-        for (let i = flakes.length - 1; i >= 0; i--) {
-          if (flakes[i]._remove) flakes.splice(i, 1)
-        }
-      }
-      requestAnimationFrame(tick)
-    }
-    tick()
-
-    // ── Player controls ────────────────────────────────────────────────────────
     const vscode = acquireVsCodeApi()
+    const $ = id => document.getElementById(id)
 
-    const songSelect = document.getElementById('song-select')
-    const btnShuffle = document.getElementById('btn-shuffle')
-    const btnLoop = document.getElementById('btn-loop')
-    
-    // Listen for extension messages
-    songSelect.addEventListener('change', () => {
-      vscode.postMessage({ type: 'SELECT_SONG', idx: parseInt(songSelect.value, 10) })
+    $('song-select').addEventListener('change', () =>
+      vscode.postMessage({ type: 'SELECT_SONG', idx: parseInt($('song-select').value, 10) }))
+
+    $('btn-shuffle').addEventListener('click', () => {
+      const v = !$('btn-shuffle').classList.toggle('active')
+      $('btn-shuffle').classList.toggle('active', !v)
+      // toggle returns the new state
+      vscode.postMessage({ type: 'TOGGLE_SHUFFLE', value: $('btn-shuffle').classList.contains('active') })
     })
 
-    btnShuffle.addEventListener('click', () => {
-      const next = !btnShuffle.classList.contains('active')
-      btnShuffle.classList.toggle('active', next)
-      vscode.postMessage({ type: 'TOGGLE_SHUFFLE', value: next })
+    $('btn-loop').addEventListener('click', () => {
+      $('btn-loop').classList.toggle('active')
+      vscode.postMessage({ type: 'TOGGLE_LOOP', value: $('btn-loop').classList.contains('active') })
     })
 
-    btnLoop.addEventListener('click', () => {
-      const next = !btnLoop.classList.contains('active')
-      btnLoop.classList.toggle('active', next)
-      vscode.postMessage({ type: 'TOGGLE_LOOP', value: next })
-    })
-
-    const nowPlaying = document.getElementById('now-playing')
-    const progressBar = document.getElementById('progress-bar')
-    const midiProgressBar = document.getElementById('midi-progress-bar')
-    const timeLabel = document.getElementById('time-label')
-
-    function fmt(secs) {
-      if (secs == null || isNaN(secs)) return '--:--'
-      const m = Math.floor(secs / 60)
-      const s = Math.floor(secs % 60)
-      return `${m}:${String(s).padStart(2, '0')}`
+    function fmt(s) {
+      if (s == null || isNaN(s)) return '--:--'
+      return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
     }
 
     function applySongList(msg) {
-      // Rebuild the <select> options
-      songSelect.innerHTML = ''
-      ;(msg.songs || []).forEach((name, idx) => {
-        const opt = document.createElement('option')
-        opt.value = idx
-        opt.textContent = name
-        if (idx === msg.currentIdx) opt.selected = true
-        songSelect.appendChild(opt)
+      const sel = $('song-select')
+      sel.innerHTML = ''
+      ;(msg.songs || []).forEach((name, i) => {
+        const o = document.createElement('option')
+        o.value = i; o.textContent = name; if (i === msg.currentIdx) o.selected = true
+        sel.appendChild(o)
       })
+      $('btn-shuffle').classList.toggle('active', !!msg.shuffle)
+      $('btn-loop').classList.toggle('active', !!msg.loop)
 
-      btnShuffle.classList.toggle('active', !!msg.shuffle)
-      btnLoop.classList.toggle('active', !!msg.loop)
+      const name = (msg.songs || [])[msg.currentIdx] ?? null
+      const np = $('now-playing')
+      np.textContent = msg.isPlaying && name ? `♪ ${name}` : (name || '—')
+      np.classList.toggle('active', !!(msg.isPlaying && name))
 
-      // Now-playing label
-      const currentName = (msg.songs || [])[msg.currentIdx] ?? null
-      if (msg.isPlaying && currentName) {
-        nowPlaying.textContent = `♪ ${currentName}`
-        nowPlaying.classList.add('active')
-      } else if (currentName) {
-        nowPlaying.textContent = currentName
-        nowPlaying.classList.remove('active')
-      } else {
-        nowPlaying.textContent = '—'
-        nowPlaying.classList.remove('active')
-      }
-
-      // Audio playback progress bar
-      const elapsed = msg.elapsed ?? 0
-      const total = msg.totalDuration ?? 0
-      const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0
-      progressBar.style.width = `${pct}%`
-      timeLabel.textContent = total > 0 ? `${fmt(elapsed)} / ${fmt(total)}` : ''
-
-      // MIDI typing progress bar
-      const midiPct = Math.min(100, (msg.midiProgress ?? 0) * 100)
-      midiProgressBar.style.width = `${midiPct}%`
+      const elapsed = msg.elapsed ?? 0, total = msg.totalDuration ?? 0
+      $('audio-bar').style.width = total > 0 ? `${Math.min(100, elapsed / total * 100)}%` : '0%'
+      $('time-label').textContent = total > 0 ? `${fmt(elapsed)} / ${fmt(total)}` : ''
+      $('midi-bar').style.width = `${Math.min(100, (msg.midiProgress ?? 0) * 100)}%`
     }
 
-    // ── Extension message handler ──────────────────────────────────────────────
-    window.addEventListener('message', event => {
-      const msg = event.data
-      if (!msg) { console.error('Received empty message'); return }
-      if (!msg.type) { console.error('Message missing type', msg); return }
-
-      if (msg.type === 'CONFIG') {
-        initiated = true
-        typingDriven = msg.typingDriven
-        density = msg.density
-        snowColor = msg.color
-        document.body.style.background = msg.backgroundColor
-        return
-      }
-      if (msg.type === 'SONG_LIST') {
-        applySongList(msg)
-        return
-      }
-      if (msg.type === 'KEY' && typingDriven) {
-        typingRate = msg.typingRate
-        // Spawn a flake per keypress, boosted based on log(1 + typingRate)
-        const speed = baseSpeed + Math.log1p(1 + typingRate)
-        flakes.push(spawnFlake({ speed, y: -10 }))
-        if (flakes.length > density) flakes.splice(0, flakes.length - density)
-        return
-      }
-      console.error('Should not get here, Unknown message type:', msg.type, msg)
+    window.addEventListener('message', ({ data: msg }) => {
+      if (!msg?.type) return
+      if (msg.type === 'SONG_LIST') applySongList(msg)
     })
   </script>
 </body>
-
 </html>
