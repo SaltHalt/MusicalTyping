@@ -4,14 +4,37 @@ const fs = require('fs')
 const path = require('path')
 const vscode = require('vscode')
 
+// ---------------------------------------------------------------------------
+// Ring buffer constants
+// ---------------------------------------------------------------------------
+const SAMPLE_RATE = 44100
+const CHUNK_SAMPLES = 512          // ~11ms per chunk — drain loop granularity
+const RING_SAMPLES = SAMPLE_RATE * 4  // 4 seconds of ring buffer
+const RING_BYTES = RING_SAMPLES * 4   // Float32 = 4 bytes per sample
+
+// How far ahead of the read head we allow mixing (hard cap on queue depth).
+// Keypresses beyond this are rejected by MusicTyping before calling mixNote().
+const MAX_AHEAD_SAMPLES = SAMPLE_RATE  // 1 second
+
 class Speaker {
 
+  // ── Binary / setup ────────────────────────────────────────────────────────
   static #binaryPath = null
   static #binaryReady = false
   static #binaryDownloading = false
 
-  // The single process used for full-song playback (stoppable)
+  // ── Streaming state ───────────────────────────────────────────────────────
+  static #streamProc = null       // the persistent play-buffer --stream-callback process
+  static #ringBuf = null          // Float32Array, length RING_SAMPLES
+  static #writeHead = 0           // sample index: where the drain loop is currently reading
+  static #mixHead = 0             // sample index: how far ahead notes have been mixed
+  static #draining = false        // whether the drain pump is running
+  static #streamReady = false     // true once the process is up
+
+  // ── Full-song playback (separate process, stoppable) ─────────────────────
   static #currentPlayProcess = null
+
+  // ── Public API ─────────────────────────────────────────────────────────────
 
   static async setupSpeaker(context, statusBarItem) {
     if (!this.#assetName) {
@@ -20,6 +43,7 @@ class Speaker {
     }
     try {
       if (!Speaker.#binaryReady) await Speaker.#downloadPlayBuffer(context)
+      Speaker.#startStream()
       statusBarItem.text = 'Akaza: Ready ❄️'
       statusBarItem.tooltip = 'Akaza extension is ready!'
     } catch (e) {
@@ -29,12 +53,49 @@ class Speaker {
 
   static stopAllProcesses() {
     try {
+      Speaker.#stopStream()
       Speaker.#killCurrentProcess()
     } catch (e) {
-      console.error('Failed to stop play-buffer processes:', e)
+      console.error('Failed to stop Speaker processes:', e)
     }
   }
 
+  // Mix a note PCM buffer into the ring buffer at the correct time.
+  // `aheadMs` is how many milliseconds from "now" (the current write head)
+  // the note should start. Pass 0 for "play as soon as possible".
+  // Returns false if the note would exceed the max queue depth (caller should drop it).
+  static mixNote(floatBuffer, aheadMs = 0) {
+    if (!Speaker.#streamReady || !Speaker.#ringBuf) return false
+
+    const aheadSamples = Math.floor((aheadMs / 1000) * SAMPLE_RATE)
+    const startSample = Speaker.#mixHead + aheadSamples
+
+    // Reject if too far ahead
+    if (startSample - Speaker.#writeHead > MAX_AHEAD_SAMPLES) return false
+
+    // Mix (add) samples into the ring buffer
+    for (let i = 0; i < floatBuffer.length; i++) {
+      const ringIdx = (startSample + i) % RING_SAMPLES
+      Speaker.#ringBuf[ringIdx] += floatBuffer[i]
+      // Soft clip in place to prevent accumulation distortion
+      if (Speaker.#ringBuf[ringIdx] > 1.0) Speaker.#ringBuf[ringIdx] = Math.tanh(Speaker.#ringBuf[ringIdx])
+      else if (Speaker.#ringBuf[ringIdx] < -1.0) Speaker.#ringBuf[ringIdx] = Math.tanh(Speaker.#ringBuf[ringIdx])
+    }
+
+    // Advance mixHead to at least the end of this note
+    const noteEnd = startSample + floatBuffer.length
+    if (noteEnd > Speaker.#mixHead) Speaker.#mixHead = noteEnd
+
+    return true
+  }
+
+  // How many milliseconds of audio are currently queued ahead of the write head
+  static get queueAheadMs() {
+    if (!Speaker.#streamReady) return 0
+    return ((Speaker.#mixHead - Speaker.#writeHead) / SAMPLE_RATE) * 1000
+  }
+
+  // For full-song playback (pre-rendered PCM, separate process)
   static sendToSpeaker(buffer, onFinish = null) {
     if (!Speaker.#binaryPath || !fs.existsSync(Speaker.#binaryPath)) {
       vscode.window.showErrorMessage('play-buffer binary not found or not downloaded')
@@ -42,135 +103,126 @@ class Speaker {
     }
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
       vscode.window.showErrorMessage('PCM buffer is invalid or empty')
-      console.warn('Speaker.sendToSpeaker: Invalid buffer', buffer)
       return
     }
-
     try {
       Speaker.#killCurrentProcess()
       vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
-
       const playProcess = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
       Speaker.#currentPlayProcess = playProcess
       playProcess.stdin.write(buffer)
       playProcess.stdin.end()
-      playProcess.on('error', (err) => {
+      playProcess.on('error', err => {
         vscode.window.showWarningMessage('Failed to play buffer: ' + err.message)
-        console.error('Speaker.sendToSpeaker spawn error:', err)
       })
       playProcess.on('exit', (code, signal) => {
         Speaker.#currentPlayProcess = null
         vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-        // Only fire onFinish for natural completion, not when killed by stopToSpeaker
         if (signal == null && onFinish) onFinish()
       })
-    } catch (err2) {
-      vscode.window.showWarningMessage('Failed to play buffer: ' + err2.message)
-      console.error('Speaker.sendToSpeaker catch error:', err2)
+    } catch (err) {
+      vscode.window.showWarningMessage('Failed to play buffer: ' + err.message)
     }
   }
 
-  // Stop the last playProcess started by sendToSpeaker
   static stopToSpeaker() {
     if (Speaker.#currentPlayProcess && !Speaker.#currentPlayProcess.killed) Speaker.#killCurrentProcess()
     else vscode.window.showInformationMessage('No active play process to stop')
   }
 
-  // Error on binary is in used by something even after killed all processes
   static async redownloadPlayBuffer(context) {
     await Speaker.#downloadPlayBuffer(context, true)
   }
 
-  // Spawn a fresh process per note so each gets its own stdin pipe.
-  // The persistent pool approach caused all notes to sound identical because
-  // Node drops data silently when stdin's internal buffer is full (backpressure),
-  // meaning only the first chunk written to each process was ever played.
-  static sendNoteToSpeaker(buffer) {
-    if (!Speaker.#binaryPath || !fs.existsSync(Speaker.#binaryPath)) return
-    if (!Buffer.isBuffer(buffer) || buffer.length === 0) return
-    try {
-      const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
-      proc.stdin.write(buffer)
-      proc.stdin.end()
-      proc.on('error', (err) => console.error('play-buffer note process error:', err))
-    } catch (e) {
-      console.error('Speaker.sendNoteToSpeaker error:', e)
-    }
-  }
+  // ── Stream internals ───────────────────────────────────────────────────────
 
-  static async #downloadPlayBuffer(context, force = false) {
-    if (Speaker.#binaryReady && !force) return
-    if (Speaker.#binaryDownloading) {
-      vscode.window.showWarningMessage('play-buffer binary is downloading')
-      return
-    }
+  static #startStream() {
+    Speaker.#ringBuf = new Float32Array(RING_SAMPLES)
+    Speaker.#writeHead = 0
+    Speaker.#mixHead = 0
+    Speaker.#draining = false
+    Speaker.#streamReady = false
 
-    if (!force) {
-      Speaker.#binaryPath = path.join(context.extensionPath, 'bin', this.#assetName)
-      const binDir = path.dirname(Speaker.#binaryPath)
-      if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true })
-      if (fs.existsSync(Speaker.#binaryPath)) {
-        Speaker.#binaryReady = true
-        Speaker.#binaryDownloading = false
-        // The binary is already downloaded
-        return
-      }
-    }
-
-    // Download the asset (auto-follows redirects)
-    Speaker.#binaryDownloading = true
-    const asset = await this.#getAssetInfo()
-    await new Promise((resolve, reject) => {
-      https.get(asset.browser_download_url, (response) => {
-        if (response.statusCode !== 200) {
-          let errorBody = ''
-          response.on('data', chunk => errorBody += chunk)
-          response.on('end', () => {
-            vscode.window.showWarningMessage('Failed to download play-buffer binary: ' + response.statusCode)
-            console.error('Download error body:', errorBody)
-            Speaker.#binaryDownloading = false
-            reject(new Error('Download failed: ' + response.statusCode))
-          })
-          return
-        }
-        const contentType = response.headers['content-type'] || ''
-        // Accept typical binary content types; GitHub may omit or vary
-        const isBinary = contentType.includes('octet-stream') || contentType.includes('binary') || contentType === ''
-        if (!isBinary) {
-          let errorBody = ''
-          response.on('data', chunk => errorBody += chunk)
-          response.on('end', () => {
-            vscode.window.showErrorMessage('Downloaded file is not a binary. Content-Type: ' + contentType)
-            console.error('Non-binary download body:', errorBody)
-            Speaker.#binaryDownloading = false
-            reject(new Error('Non-binary file: ' + contentType))
-          })
-          return
-        }
-        const file = fs.createWriteStream(Speaker.#binaryPath)
-        response.pipe(file)
-        file.on('finish', () => {
-          file.close()
-          try {
-            if (process.platform !== 'win32') fs.chmodSync(Speaker.binaryPath, '755')
-          } catch (e) {
-            console.error('Failed to set executable permission:', e)
-          }
-          Speaker.#binaryReady = true
-          Speaker.#binaryDownloading = false
-          vscode.window.showInformationMessage('Downloaded play-buffer binary successfully! 🚀')
-          resolve()
-        })
-        file.on('error', (err) => {
-          Speaker.#binaryDownloading = false
-          reject(err)
-        })
-      }).on('error', (err) => {
-        Speaker.#binaryDownloading = false
-        reject(err)
-      })
+    const proc = spawn(Speaker.#binaryPath, ['--stream-callback'], {
+      stdio: ['pipe', 'ignore', 'ignore']
     })
+    Speaker.#streamProc = proc
+
+    proc.on('error', err => console.error('play-buffer stream error:', err))
+    proc.on('exit', (code, signal) => {
+      console.warn(`play-buffer stream exited (code=${code} signal=${signal})`)
+      Speaker.#streamReady = false
+      Speaker.#draining = false
+      // Restart unless we killed it intentionally
+      if (signal !== 'SIGTERM' && signal !== 'SIGKILL') {
+        setTimeout(() => Speaker.#startStream(), 500)
+      }
+    })
+
+    // Give the process a moment to initialise its audio device
+    setTimeout(() => {
+      Speaker.#streamReady = true
+      // Prefill ~200ms of silence so the audio device has something to consume
+      // before notes arrive. This primes the buffer and avoids a startup gap.
+      Speaker.#writeHead = 0
+      Speaker.#mixHead = Math.floor(0.2 * SAMPLE_RATE)
+      Speaker.#startDrain()
+    }, 200)
   }
+
+  static #stopStream() {
+    Speaker.#draining = false
+    Speaker.#streamReady = false
+    if (Speaker.#streamProc && !Speaker.#streamProc.killed) {
+      try {
+        Speaker.#streamProc.stdin.end()
+        Speaker.#streamProc.kill()
+      } catch (e) { /* ignore */ }
+    }
+    Speaker.#streamProc = null
+    Speaker.#ringBuf = null
+  }
+
+  // The drain pump: reads CHUNK_SAMPLES from the ring buffer and writes to stdin.
+  // Respects backpressure — if stdin.write returns false, waits for 'drain' event.
+  // Uses setImmediate for tighter scheduling than setTimeout.
+  static #startDrain() {
+    if (Speaker.#draining) return
+    Speaker.#draining = true
+    Speaker.#pump()
+  }
+
+  static #pump() {
+    if (!Speaker.#draining || !Speaker.#streamReady) return
+    const proc = Speaker.#streamProc
+    if (!proc || proc.killed || !proc.stdin.writable) return
+
+    // Extract CHUNK_SAMPLES from ring buffer starting at writeHead
+    const chunk = new Float32Array(CHUNK_SAMPLES)
+    for (let i = 0; i < CHUNK_SAMPLES; i++) {
+      const ringIdx = (Speaker.#writeHead + i) % RING_SAMPLES
+      chunk[i] = Speaker.#ringBuf[ringIdx]
+      // Clear the slot after reading so it's ready for future mixing
+      Speaker.#ringBuf[ringIdx] = 0
+    }
+    Speaker.#writeHead += CHUNK_SAMPLES
+
+    // Keep mixHead at least at writeHead so new notes don't go into the past
+    if (Speaker.#mixHead < Speaker.#writeHead) Speaker.#mixHead = Speaker.#writeHead
+
+    const nodeBuf = Buffer.from(chunk.buffer)
+    const ok = proc.stdin.write(nodeBuf)
+
+    if (ok) {
+      // stdin buffer has room — schedule next chunk immediately
+      setImmediate(() => Speaker.#pump())
+    } else {
+      // Backpressure: wait for stdin to drain before sending more
+      proc.stdin.once('drain', () => Speaker.#pump())
+    }
+  }
+
+  // ── Process / download helpers ─────────────────────────────────────────────
 
   static #killCurrentProcess() {
     if (!Speaker.#currentPlayProcess || Speaker.#currentPlayProcess.killed) return
@@ -189,8 +241,59 @@ class Speaker {
     if (platform === 'linux') return 'play_buffer_linux'
   }
 
+  static async #downloadPlayBuffer(context, force = false) {
+    if (Speaker.#binaryReady && !force) return
+    if (Speaker.#binaryDownloading) {
+      vscode.window.showWarningMessage('play-buffer binary is downloading')
+      return
+    }
+    if (!force) {
+      Speaker.#binaryPath = path.join(context.extensionPath, 'bin', this.#assetName)
+      const binDir = path.dirname(Speaker.#binaryPath)
+      if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true })
+      if (fs.existsSync(Speaker.#binaryPath)) {
+        Speaker.#binaryReady = true
+        return
+      }
+    }
+    Speaker.#binaryDownloading = true
+    const asset = await this.#getAssetInfo()
+    await new Promise((resolve, reject) => {
+      https.get(asset.browser_download_url, (response) => {
+        if (response.statusCode !== 200) {
+          let body = ''
+          response.on('data', c => body += c)
+          response.on('end', () => {
+            Speaker.#binaryDownloading = false
+            reject(new Error('Download failed: ' + response.statusCode))
+          })
+          return
+        }
+        const contentType = response.headers['content-type'] || ''
+        const isBinary = contentType.includes('octet-stream') || contentType.includes('binary') || contentType === ''
+        if (!isBinary) {
+          Speaker.#binaryDownloading = false
+          reject(new Error('Non-binary file: ' + contentType))
+          return
+        }
+        const file = fs.createWriteStream(Speaker.#binaryPath)
+        response.pipe(file)
+        file.on('finish', () => {
+          file.close()
+          try {
+            if (process.platform !== 'win32') fs.chmodSync(Speaker.#binaryPath, '755')
+          } catch (e) { console.error('chmod failed:', e) }
+          Speaker.#binaryReady = true
+          Speaker.#binaryDownloading = false
+          vscode.window.showInformationMessage('Downloaded play-buffer binary successfully! 🚀')
+          resolve()
+        })
+        file.on('error', err => { Speaker.#binaryDownloading = false; reject(err) })
+      }).on('error', err => { Speaker.#binaryDownloading = false; reject(err) })
+    })
+  }
+
   static async #getAssetInfo() {
-    // Fetch latest release info from GitHub API
     const apiUrl = 'https://api.github.com/repos/lanly-dev/play-buffer/releases/latest'
     const releaseInfo = await new Promise((resolve, reject) => {
       https.get(apiUrl, { headers: { 'User-Agent': 'akazas-love-extension' } }, (res) => {
@@ -202,8 +305,6 @@ class Speaker {
         })
       }).on('error', reject)
     })
-
-    // Find correct asset for platform
     const asset = releaseInfo.assets.find(a => a.name === Speaker.#assetName)
     if (!asset) throw new Error('No compatible binary')
     return asset

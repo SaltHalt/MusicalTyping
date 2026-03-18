@@ -27,8 +27,7 @@ class MusicalTyping {
   static #totalDuration   // seconds, from MusicSynth
 
   static #chunkLength = 180 // How many notes are added with each press, in ms.
-  static #queueEnd = 0    // Date.now() ms when the current note queue will finish
-  static #MAX_QUEUE_MS = 1000  // max lookahead — keypresses beyond this are ignored
+  static #MAX_QUEUE_MS = 1000  // max lookahead in ms — keypresses beyond this are ignored
   static #midiDuration = 0    // total duration of current MIDI file in seconds
 
   static init(context, webviewProvider) {
@@ -111,7 +110,6 @@ class MusicalTyping {
 
     this.#currentSongIdx = idx
     this.#currentNoteIdx = 0
-    this.#queueEnd = 0
     this.#loadCurrentMidi()
     this.#webviewProvider?.postSongList()
 
@@ -184,22 +182,6 @@ class MusicalTyping {
     }
   }
 
-  static async playIndividualNote(midiNote, duration, delayMs, options) {
-    const SoundFont = require('./SoundFont')
-    if (!SoundFont.isReady) {
-      vscode.window.setStatusBarMessage('🎹 Downloading piano samples...', 2000)
-      await SoundFont.waitUntilReady()
-    }
-    const noteResult = MusicSynth.generateNote(midiNote, duration, 0, options)
-    const pcmBuffer = Buffer.from(noteResult.floatBuffer.buffer)
-
-    setTimeout(() => {
-      Speaker.sendNoteToSpeaker(pcmBuffer)
-      const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
-      vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
-    }, delayMs)
-  }
-
   static #loadConfiguration() {
     const config = vscode.workspace.getConfiguration('akazas-love')
     this.#enabled = config.get('musicTyping')
@@ -223,52 +205,44 @@ class MusicalTyping {
     const configDisposable = vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration('akazas-love.musicTyping')) return
       this.#loadConfiguration()
-      const message = this.#enabled ? '🎶 Musical typing enabled' : '⛔ Musical typing disabled'
+      const message = this.#enabled ? '\U0001f3b6 Musical typing enabled' : '\u26d4 Musical typing disabled'
       vscode.window.setStatusBarMessage(message, 3000)
     })
     this.#context.subscriptions.push(changeDisposable, configDisposable)
   }
 
+  // Mix a single note into the Speaker ring buffer at the given ahead-offset.
+  static #mixNote(midiNote, duration, aheadMs, options) {
+    const SoundFont = require('./SoundFont')
+    if (!SoundFont.isReady) return
+    const noteResult = MusicSynth.generateNote(midiNote, duration, 0, options)
+    Speaker.mixNote(noteResult.floatBuffer, aheadMs)
+    const noteName = MusicalTyping.#frequencyToNoteName(440 * Math.pow(2, (midiNote - 69) / 12))
+    vscode.window.setStatusBarMessage(`♪ ${noteName}`, 800)
+  }
+
   static #playMidiNotes() {
     if (this.#notes.length === 0) return
 
-    const now = Date.now()
-    const queueAhead = this.#queueEnd - now  // ms of audio already queued but not yet played
+    // Use Speaker's live queue depth as the source of truth.
+    // It decreases naturally as the drain loop consumes audio.
+    const queueAheadMs = Speaker.queueAheadMs
 
-    // --- Rule 2: queue is full ---
-    // More than 1000ms is queued. Only exception (Rule 3): the queue is long because
-    // there is a single sustained note — detected by checking if the LAST released note
-    // group has a duration longer than the queue itself (i.e. no subsequent notes queued).
-    if (queueAhead > this.#MAX_QUEUE_MS) {
-      // Check if there are any pending note groups beyond the current idx
-      // If #currentNoteIdx is still on the same group that filled the queue,
-      // then queueAhead came entirely from one long note — allow a single extra.
-      const prevIdx = this.#currentNoteIdx === 0
-        ? this.#notes.length - 1
-        : this.#currentNoteIdx - 1
-      const lastReleasedDuration = Math.max(
-        ...this.#notes[prevIdx].map(n => Math.max(n.duration, 0.3))
-      ) * 1000
-      // If the last note alone accounts for more than the queue ahead, we are
-      // sustaining a long note with nothing else queued — allow the exception.
-      const sustainingLongNote = lastReleasedDuration >= queueAhead
-      if (!sustainingLongNote) return
-    }
+    // --- Rule 2 + 3: block if queue is full, unless buffer is empty ---
+    if (queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0) return
 
     // --- End of MIDI: advance to next song ---
     if (this.#currentNoteIdx >= this.#notes.length) {
       this.#currentNoteIdx = 0
-      this.#queueEnd = 0
       this.#advanceToNextSong()
       this.#webviewProvider?.postSongList()
-      return  // skip this keypress; next one will start the new song
+      return
     }
 
     // --- Rule 1: collect all notes starting within the next 40ms window ---
     const windowStart = this.#notes[this.#currentNoteIdx][0].time
     const windowEnd = windowStart + this.#chunkLength/1000  // 40ms window in seconds
 
-    // Collect consecutive note groups whose time falls within the window
     let windowGroups = []
     let scanIdx = this.#currentNoteIdx
     while (scanIdx < this.#notes.length &&
@@ -276,41 +250,26 @@ class MusicalTyping {
       windowGroups.push(this.#notes[scanIdx])
       scanIdx++
     }
-
-    // If no notes fell in the window (shouldn't happen since we start from current),
-    // fall back to releasing just the single next note group.
     if (windowGroups.length === 0) {
       windowGroups = [this.#notes[this.#currentNoteIdx]]
       scanIdx = this.#currentNoteIdx + 1
     }
 
-    // Schedule all collected groups, spacing them by their real MIDI time offsets
-    // relative to the window start, so rapid arpeggios sound correct.
-    const delayBase = Math.max(0, this.#queueEnd - now)
-
+    // Mix each group into the ring buffer at sample-accurate positions.
+    // aheadMs for each group = current live queue depth + intra-window offset.
     for (const group of windowGroups) {
-      // Offset within the window (ms), preserving inter-note timing
-      const groupOffset = (group[0].time - windowStart) * 1000
-      const delayMs = delayBase + groupOffset
-
-      const groupDuration = Math.max(...group.map(n => Math.max(n.duration, 0.3)))
+      const groupOffsetMs = (group[0].time - windowStart) * 1000
+      const aheadMs = queueAheadMs + groupOffsetMs
 
       group.forEach(note => {
         const playDuration = Math.max(note.duration, 0.3)
-        this.playIndividualNote(note.midi, playDuration, delayMs, {
+        this.#mixNote(note.midi, playDuration, aheadMs, {
           velocity: note.velocity * this.#volume,
           chordScale: note.chordScale
         })
       })
     }
 
-    // Advance queue end past the last group in the window
-    const lastGroup = windowGroups[windowGroups.length - 1]
-    const lastGroupDuration = Math.max(...lastGroup.map(n => Math.max(n.duration, 0.3)))
-    const lastGroupOffset = (lastGroup[0].time - windowStart) * 1000
-    this.#queueEnd = Math.max(now, this.#queueEnd) + lastGroupOffset + lastGroupDuration * 1000
-
-    // Update note index and push progress to webview
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()
 
