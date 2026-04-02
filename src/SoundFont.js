@@ -38,18 +38,19 @@ class SoundFont {
   }
 
   // Returns a Float32Array of `durationSecs` seconds of PCM for the given midi note.
-  static getSample(midiNote, durationSecs, velocity = 0.8) {
+  static getSample(midiNote, durationSecs, delayMs, velocity = 0.8) {
     if (!this.#ready) throw new Error('SoundFont not ready')
     const clamped = Math.max(MIDI_MIN, Math.min(MIDI_MAX, midiNote))
     const raw = this.#samples.get(clamped)
     if (!raw) throw new Error(`No sample for midi ${clamped}`)
 
+    const silenceLength = Math.ceil(delayMs /1000 * SAMPLE_RATE)
     const needed = Math.max(1, Math.ceil(durationSecs * SAMPLE_RATE))
-    const out = new Float32Array(needed)
+    const out = new Float32Array(silenceLength+needed)
     const releaseSamples = Math.min(needed, Math.floor(0.12 * SAMPLE_RATE))
     for (let i = 0; i < needed; i++) {
       const fade = (needed - i) < releaseSamples ? (needed - i) / releaseSamples : 1.0   //\log_{10}\left(1+9x\right)
-      out[i] = (i < raw.length ? raw[i] : 0) * velocity * fade  //gain = \log_{10}\left(1+9*velocity\right)
+      out[silenceLength+i] = (i < raw.length ? raw[i] : 0) * velocity * fade  //gain = \log_{10}\left(1+9*velocity\right)
     }
     return out
   }
