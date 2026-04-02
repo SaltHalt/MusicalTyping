@@ -6,6 +6,7 @@ const Speaker = require('./Speaker')
 const SoundFont = require('./SoundFont')
 
 const SAMPLE_RATE = 44100
+const WINDOW_LENGTH_SECS = 1
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 class MusicTyping {
@@ -49,7 +50,7 @@ class MusicTyping {
 
     this.stopBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
     this.stopBtn.command = 'akazas-love.stopSong'
-    this.stopBtn.text = '⏹️ Stop'
+    this.stopBtn.text = 'Stop'
     context.subscriptions.push(this.stopBtn)
 
     // Typing listener
@@ -91,19 +92,29 @@ class MusicTyping {
     const midi = new Midi(fs.readFileSync(midiPath))
 
     const allNotes = []
-    midi.tracks.forEach(track => track.notes.forEach(note => allNotes.push({
-      midi: note.midi,
-      name: note.name,
-      duration: note.duration,
-      time: note.time,
-      velocity: note.velocity * 1.5,
-    })))
+    midi.tracks.forEach(track => 
+      track.notes.forEach(note => // TODO: Squashing of tracks?
+        allNotes.push({
+          midi: note.midi,
+          name: note.name,
+          duration: note.duration,
+          time: note.time,
+          velocity: note.velocity * 1.5, //TODO: Should this be removed?
+        })
+      )
+    )
 
     // Group by exact start time across all tracks
     const timeMap = {}
-    allNotes.forEach(n => { (timeMap[n.time] = timeMap[n.time] || []).push(n) })
-    const times = Object.keys(timeMap).map(Number).sort((a, b) => a - b)
-    this.#notes = times.map(t => timeMap[t].map(n => ({ ...n, chordScale: 1 / timeMap[t].length })))
+    allNotes.forEach(n => {
+       (timeMap[n.time] = timeMap[n.time] || []).push(n) 
+      })
+    const times = Object.keys(timeMap).map(Number).sort()
+    this.#notes = times.map(t => 
+      timeMap[t].map(n => 
+        ({ ...n, chordScale: 1 / timeMap[t].length })
+      )
+    )
 
     this.#midiDuration = allNotes.length
       ? Math.max(...allNotes.map(n => n.time + n.duration))
@@ -148,7 +159,7 @@ class MusicTyping {
     if (wasPlaying) this.playMidiFile(true)
   }
 
-  static setLoop(v)    { this.#loop = v;    this.#webviewProvider?.postSongList() }
+  static setLoop(v) { this.#loop = v; this.#webviewProvider?.postSongList() }
   static setShuffle(v) { this.#shuffle = v; this.#webviewProvider?.postSongList() }
 
   static async playMidiFile(needPlay) {
@@ -184,8 +195,8 @@ class MusicTyping {
 
   // Inline of MusicSynth.generateNote — returns Float32Array PCM for one note
   static #renderNote(midiNote, durationSecs, options = {}) {
-    const velocity = Math.min(1.0, (options.velocity ?? 0.8) * (options.chordScale ?? 1.0))
-    return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), velocity)
+    const velocity = Math.min(1.0, (options.velocity ?? 0.8) * (options.chordScale ?? 1.0)) //TODO: Should we be taking a fraction of the velcoity to control volume
+    return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), velocity) //TODO: Why impose a ceiling on duration?
   }
 
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
@@ -206,11 +217,11 @@ class MusicTyping {
 
     for (const note of allNotes) {
       const chordScale = 1 / timeFrames.get(Math.round(note.time * 1000))
-      const pcm = this.#renderNote(note.midi, note.duration, { velocity: note.velocity, chordScale })
+      const pcm = this.#renderNote(note.midi, note.duration, { velocity: note.velocity, chordScale }) //TODO: Doesn't consider instrument.
       const start = Math.floor(note.time * SAMPLE_RATE)
       for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
     }
-    for (let i = 0; i < totalSamples; i++) mix[i] = Math.tanh(mix[i])
+    for (let i = 0; i < totalSamples; i++) mix[i] = Math.tanh(mix[i]) //TODO: Tanh necessary?
     return Buffer.from(mix.buffer)
   }
 
@@ -222,9 +233,11 @@ class MusicTyping {
     const now = Date.now()
     const queueAheadMs = Math.max(0, this.#queueEndMs - now)
 
-    if (queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0) return
+    const isQueueTooLong = queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0
+    if (isQueueTooLong) return
 
-    if (this.#currentNoteIdx >= this.#notes.length) {
+    const endOfMidiReached = this.#currentNoteIdx >= this.#notes.length
+    if (endOfMidiReached) {
       this.#currentNoteIdx = 0
       this.#advanceToNextSong()
       this.#webviewProvider?.postSongList()
@@ -232,7 +245,7 @@ class MusicTyping {
     }
 
     const windowStart = this.#notes[this.#currentNoteIdx][0].time
-    const windowEnd = windowStart + 0.040
+    const windowEnd = windowStart + WINDOW_LENGTH_SECS
 
     let scanIdx = this.#currentNoteIdx
     const windowGroups = []
@@ -249,14 +262,14 @@ class MusicTyping {
           chordScale: note.chordScale,
         }).buffer)
         if (delayMs <= 0) Speaker.sendNoteToSpeaker(pcm)
-        else setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delayMs)
+        else setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delayMs) //TODO: Change this to prepadding with zeros.
       })
     }
 
     const lastGroup = windowGroups[windowGroups.length - 1]
     const lastOffsetMs = (lastGroup[0].time - windowStart) * 1000
     const lastDurationMs = Math.max(...lastGroup.map(n => Math.max(n.duration, 0.3))) * 1000
-    this.#queueEndMs = Math.max(now, this.#queueEndMs) + lastOffsetMs + lastDurationMs
+    this.#queueEndMs = Math.max(now, this.#queueEndMs) + lastOffsetMs +1 //+ lastDurationMs //TODO: Add 1 instead otherwise extra notes get skipped?
 
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()

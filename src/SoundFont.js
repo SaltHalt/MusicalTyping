@@ -48,8 +48,8 @@ class SoundFont {
     const out = new Float32Array(needed)
     const releaseSamples = Math.min(needed, Math.floor(0.12 * SAMPLE_RATE))
     for (let i = 0; i < needed; i++) {
-      const fade = (needed - i) < releaseSamples ? (needed - i) / releaseSamples : 1.0
-      out[i] = (i < raw.length ? raw[i] : 0) * velocity * fade
+      const fade = (needed - i) < releaseSamples ? (needed - i) / releaseSamples : 1.0   //\log_{10}\left(1+9x\right)
+      out[i] = (i < raw.length ? raw[i] : 0) * velocity * fade  //gain = \log_{10}\left(1+9*velocity\right)
     }
     return out
   }
@@ -76,7 +76,7 @@ class SoundFont {
     vscode.window.setStatusBarMessage('🎹 Piano samples ready!', 3000)
   }
 
-  static async #decode(jsFilePath, context) {
+  static async #decode(jsFilePath, context) { //TODO: no js library function?
     const bar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99)
     bar.text = '🎹 Decoding piano samples…'
     bar.show()
