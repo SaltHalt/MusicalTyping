@@ -186,9 +186,8 @@ class MusicTyping {
   // ── Note rendering ─────────────────────────────────────────────────────────
 
   // Inline of MusicSynth.generateNote — returns Float32Array PCM for one note
-  static #renderNote(midiNote, durationSecs, delayMs, options = {}) {
-    const velocity = Math.min(1.0, options.velocity ?? 0.8)
-    return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), delayMs, velocity) //TODO: Why impose a ceiling on duration?
+  static #renderNote(midiNote, durationSecs, delayMs, velocity) {
+    return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), delayMs, Math.min(1.0, velocity))
   }
 
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
@@ -202,7 +201,7 @@ class MusicTyping {
     const mix = new Float32Array(totalSamples)
 
     for (const note of allNotes) {
-      const pcm = this.#renderNote(note.midi, note.duration, 0, { velocity: note.velocity }) //TODO: Doesn't consider instrument.
+      const pcm = this.#renderNote(note.midi, note.duration, 0, note.velocity) //TODO: Doesn't consider instrument.
       const start = Math.floor(note.time * SAMPLE_RATE)
       for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
     }
@@ -242,9 +241,7 @@ class MusicTyping {
     for (const note of windowNotes) {
       if (!SoundFont.isReady) break
       const delayMs = queueAheadMs + (note.time - windowStart) * 1000
-      const pcm = Buffer.from(this.#renderNote(note.midi, Math.max(note.duration, 0.3), delayMs, {
-        velocity: note.velocity * this.#volume,
-      }).buffer)
+      const pcm = Buffer.from(this.#renderNote(note.midi, note.duration, delayMs, note.velocity * this.#volume).buffer)
       Speaker.sendNoteToSpeaker(pcm)
     }
 
