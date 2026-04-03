@@ -164,7 +164,7 @@ class MusicTyping {
     this.stopBtn.show()
   }
 
-  static #getMidiDuration(midiPath){
+  static #getMidiDuration(midiPath) {
     const midi = new Midi(fs.readFileSync(midiPath))
     return midi.duration
   }
@@ -174,7 +174,7 @@ class MusicTyping {
     const midi = new Midi(fs.readFileSync(midiPath))
     const allNotes = []
     midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
-    allNotes.sort((a, b) => a.time - b.time)    
+    allNotes.sort((a, b) => a.time - b.time)
     //TODO: Do i Need to worry about midi.header? 
     return allNotes
   }
@@ -198,10 +198,10 @@ class MusicTyping {
 
   // Inline of MusicSynth.generateNote — returns Float32Array PCM for one note
   static #renderNote(note, delay) {
-    return SoundFont.getSample(note.midi, Math.max(note.duration, 0.05), delay, Math.min(1.0, note.velocity))
+    return SoundFont.getSample(note.midi, Math.max(note.duration, 0.05), Math.min(1.0, note.velocity)) //Should I add this.#volume here?
   }
 
-  
+
   // notes must be in order
   static #renderGroup(notes) {
     const group_start_sample = Math.floor(notes[0].time * SAMPLE_RATE)
@@ -218,23 +218,31 @@ class MusicTyping {
     return Buffer.from(mix.buffer)
   }
 
+  // Sticks silence before the pcm
+  static #prependSilence(pcm, duration) {
+    const silenceLength = Math.ceil(duration * SAMPLE_RATE)
+    const delayed_pcm = new Float32Array(silenceLength + pcm.length)
+    for (let i = 0; i < pcm.length; i++) {
+      out[silenceLength + i] = pcm[i]
+    }
+    return out
+  }
+
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
   static async #renderMidiToBuffer(midiPath) {
-    allNotes = this.#readMidiFile(midiPath)
+    const allNotes = this.#readMidiFile(midiPath)
     return this.#renderGroup(allNotes)
   }
 
   // ── Typing playback ────────────────────────────────────────────────────────
 
   static #playMidiNotes() {
-    if (!this.#notes.length) return
-
     const now = performance.now()
     this.#queueEndMs = Math.max(this.#queueEndMs, now)
     const queueAheadMs = this.#queueEndMs - now
 
     const isQueueTooLong = queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0
-    if (isQueueTooLong) return
+    if (isQueueTooLong) return //Needed?
 
     const endOfMidiReached = this.#currentNoteIdx >= this.#notes.length
     if (endOfMidiReached) {
@@ -249,23 +257,21 @@ class MusicTyping {
 
     let scanIdx = this.#currentNoteIdx
     const windowNotes = []
-    while (scanIdx < this.#notes.length && this.#notes[scanIdx].time <= windowEnd)
+    //TODO: Put this window selection in a function
+    while (scanIdx < this.#notes.length && this.#notes[scanIdx].time <= windowEnd) { 
       windowNotes.push(this.#notes[scanIdx++])
+    }
     if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ }
 
-    for (const note of windowNotes) { //TODO: replace this with Speaker.sendNoteToSpeaker(this.#renderGroup(windowNotes))
-      if (!SoundFont.isReady) break
-      const delayMs = queueAheadMs + (note.time - windowStart) * 1000
-      const pcm = Buffer.from(this.#renderNote(note.midi, note.duration, delayMs, note.velocity * this.#volume).buffer)
-      Speaker.sendNoteToSpeaker(pcm)
-    }
+    const pcm = this.#renderGroup(windowNotes)
+    const delayed_pcm = this.#prependSilence(pcm, queueAheadMs * 1000) //Change this?
+    Speaker.sendNoteToSpeaker(delayed_pcm)
 
     this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()
 
-    vscode.window.setStatusBarMessage(
-      `🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
+    vscode.window.setStatusBarMessage(`🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
   }
 
   static #midiToNoteName(midi) {
