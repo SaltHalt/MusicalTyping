@@ -16,7 +16,7 @@ class MusicTyping {
   static #enabled
   static #volume
 
-  static #notes = []           // array of note groups, each group = notes sharing the same start time
+  static #notes = []           // flat array of notes sorted by start time
   static #currentNoteIdx = 0
   static #nextBlockStartTime = 0
 
@@ -105,22 +105,13 @@ class MusicTyping {
       )
     )
 
-    // Group by exact start time across all tracks
-    const timeMap = {}
-    allNotes.forEach(n => {
-       (timeMap[n.time] = timeMap[n.time] || []).push(n) 
-      })
-    const times = Object.keys(timeMap).map(Number).sort()
-    this.#notes = times.map(t => 
-      timeMap[t].map(n => 
-        ({ ...n, chordScale: 1 / timeMap[t].length })
-      )
-    )
+    allNotes.sort((a, b) => a.time - b.time)
+    this.#notes = allNotes
 
     this.#midiDuration = allNotes.length
       ? Math.max(...allNotes.map(n => n.time + n.duration))
       : 0
-    console.log(`Loaded: ${midi.tracks.length} tracks, ${allNotes.length} notes, ${this.#notes.length} groups, ${this.#midiDuration.toFixed(1)}s`)
+    console.log(`Loaded: ${midi.tracks.length} tracks, ${allNotes.length} notes, ${this.#midiDuration.toFixed(1)}s`)
   }
 
   static #advanceToNextSong() {
@@ -196,7 +187,7 @@ class MusicTyping {
 
   // Inline of MusicSynth.generateNote — returns Float32Array PCM for one note
   static #renderNote(midiNote, durationSecs, delayMs, options = {}) {
-    const velocity = Math.min(1.0, (options.velocity ?? 0.8) * (options.chordScale ?? 1.0)) //TODO: Should we be taking a fraction of the velcoity to control volume
+    const velocity = Math.min(1.0, options.velocity ?? 0.8)
     return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), delayMs, velocity) //TODO: Why impose a ceiling on duration?
   }
 
@@ -207,18 +198,11 @@ class MusicTyping {
     midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
     allNotes.sort((a, b) => a.time - b.time)
 
-    const timeFrames = new Map()
-    allNotes.forEach(n => {
-      const k = Math.round(n.time * 1000)
-      timeFrames.set(k, (timeFrames.get(k) || 0) + 1)
-    })
-
     const totalSamples = Math.ceil(SAMPLE_RATE * (Math.max(midi.duration, ...allNotes.map(n => n.time + n.duration)) + 0.5))
     const mix = new Float32Array(totalSamples)
 
     for (const note of allNotes) {
-      const chordScale = 1 / timeFrames.get(Math.round(note.time * 1000))
-      const pcm = this.#renderNote(note.midi, note.duration, 0, { velocity: note.velocity, chordScale }) //TODO: Doesn't consider instrument.
+      const pcm = this.#renderNote(note.midi, note.duration, 0, { velocity: note.velocity }) //TODO: Doesn't consider instrument.
       const start = Math.floor(note.time * SAMPLE_RATE)
       for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
     }
@@ -246,37 +230,30 @@ class MusicTyping {
       return
     }
 
-    const windowStart = this.#notes[this.#currentNoteIdx][0].time
+    const windowStart = this.#notes[this.#currentNoteIdx].time
     const windowEnd = windowStart + WINDOW_LENGTH_SECS
 
     let scanIdx = this.#currentNoteIdx
-    const windowGroups = []
-    while (scanIdx < this.#notes.length && this.#notes[scanIdx][0].time <= windowEnd)
-      windowGroups.push(this.#notes[scanIdx++])
-    if (!windowGroups.length) { windowGroups.push(this.#notes[this.#currentNoteIdx]); scanIdx++ }
+    const windowNotes = []
+    while (scanIdx < this.#notes.length && this.#notes[scanIdx].time <= windowEnd)
+      windowNotes.push(this.#notes[scanIdx++])
+    if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ }
 
-    for (const group of windowGroups) {
-      const delayMs = queueAheadMs + (group[0].time - windowStart) * 1000
-      group.forEach(note => {
-        if (!SoundFont.isReady) return
-        const pcm = Buffer.from(this.#renderNote(note.midi, Math.max(note.duration, 0.3), delayMs, {
-          velocity: note.velocity * this.#volume,
-          chordScale: note.chordScale,
-        }).buffer)
-        Speaker.sendNoteToSpeaker(pcm)
-      })
+    for (const note of windowNotes) {
+      if (!SoundFont.isReady) break
+      const delayMs = queueAheadMs + (note.time - windowStart) * 1000
+      const pcm = Buffer.from(this.#renderNote(note.midi, Math.max(note.duration, 0.3), delayMs, {
+        velocity: note.velocity * this.#volume,
+      }).buffer)
+      Speaker.sendNoteToSpeaker(pcm)
     }
 
-    const lastGroup = windowGroups[windowGroups.length - 1]
-    const lastOffsetMs = (lastGroup[0].time - windowStart) * 1000
-    const lastDurationMs = Math.max(...lastGroup.map(n => Math.max(n.duration, 0.3))) * 1000
     this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
-
     this.#currentNoteIdx = scanIdx
     this.#webviewProvider?.postSongList()
 
     vscode.window.setStatusBarMessage(
-      `🎵 ${windowGroups.flatMap(g => g.map(n => n.name)).join('+')}`, 1500)
+      `🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
   }
 
   static #midiToNoteName(midi) {
