@@ -18,7 +18,7 @@ class MusicTyping {
 
   static #notes = []           // flat array of notes sorted by start time
   static #currentNoteIdx = 0
-  static #nextBlockStartTime = 0
+  static #nextBlockStartTime = 0 //Needed?
 
   static #songList = []        // [{ name, path }]
   static #currentSongIdx = 0
@@ -26,7 +26,7 @@ class MusicTyping {
   static #loop = true
   static #isPlaying = false
   static #playStartTime = null
-  static #totalDuration = null
+  static #totalDuration = null //TODO: Needed?
 
   static #MAX_QUEUE_MS = 1000
   static #midiDuration = 0
@@ -90,27 +90,8 @@ class MusicTyping {
   static #loadCurrentMidi() {
     if (this.#songList.length === 0) return
     const midiPath = this.#songList[this.#currentSongIdx].path
-    const midi = new Midi(fs.readFileSync(midiPath))
-    //TODO: Make function for reading midi file and squashing tracks together into a flat array.
-    const allNotes = []
-    midi.tracks.forEach(track =>  
-      track.notes.forEach(note => // TODO: Squashing of tracks?
-        allNotes.push({
-          midi: note.midi,
-          name: note.name,
-          duration: note.duration,
-          time: note.time,
-          velocity: note.velocity * 1.5, //TODO: Should this be removed?
-        })
-      )
-    )
-
-    allNotes.sort((a, b) => a.time - b.time)
-    this.#notes = allNotes
-
-    this.#midiDuration = allNotes.length
-      ? Math.max(...allNotes.map(n => n.time + n.duration))
-      : 0
+    this.#notes = this.#readMidiFile(midiPath)
+    this.#midiDuration = this.#getMidiDuration(midiPath)
     console.log(`Loaded: ${midi.tracks.length} tracks, ${allNotes.length} notes, ${this.#midiDuration.toFixed(1)}s`)
   }
 
@@ -183,6 +164,21 @@ class MusicTyping {
     this.stopBtn.show()
   }
 
+  static #getMidiDuration(midiPath){
+    const midi = new Midi(fs.readFileSync(midiPath))
+    return midi.duration
+  }
+
+  //Flattens and sorts notes by start time.
+  static #readMidiFile(midiPath) {
+    const midi = new Midi(fs.readFileSync(midiPath))
+    const allNotes = []
+    midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
+    allNotes.sort((a, b) => a.time - b.time)    
+    //TODO: Do i Need to worry about midi.header? 
+    return allNotes
+  }
+
   // ── Note rendering ─────────────────────────────────────────────────────────
 
   // Structure of midi note: t3 {midi: 67, velocity: 1, noteOffVelocity: 0, ticks: 9216, durationTicks: 764}
@@ -204,6 +200,7 @@ class MusicTyping {
   static #renderNote(note, delay) {
     return SoundFont.getSample(note.midi, Math.max(note.duration, 0.05), delay, Math.min(1.0, note.velocity))
   }
+
   
   // notes must be in order
   static #renderGroup(notes) {
@@ -223,12 +220,7 @@ class MusicTyping {
 
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
   static async #renderMidiToBuffer(midiPath) {
-    const midi = new Midi(fs.readFileSync(midiPath))
-    const allNotes = []
-    midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
-
-    //TODO: Do i Need to worry about midi.header? 
-    allNotes.sort((a, b) => a.time - b.time)    
+    allNotes = this.#readMidiFile(midiPath)
     return this.#renderGroup(allNotes)
   }
 
