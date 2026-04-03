@@ -91,9 +91,9 @@ class MusicTyping {
     if (this.#songList.length === 0) return
     const midiPath = this.#songList[this.#currentSongIdx].path
     const midi = new Midi(fs.readFileSync(midiPath))
-
+    //TODO: Make function for reading midi file and squashing tracks together into a flat array.
     const allNotes = []
-    midi.tracks.forEach(track => 
+    midi.tracks.forEach(track =>  
       track.notes.forEach(note => // TODO: Squashing of tracks?
         allNotes.push({
           midi: note.midi,
@@ -185,9 +185,40 @@ class MusicTyping {
 
   // ── Note rendering ─────────────────────────────────────────────────────────
 
+  // Structure of midi note: t3 {midi: 67, velocity: 1, noteOffVelocity: 0, ticks: 9216, durationTicks: 764}
+  // Structure of midi track: {
+  // name: "",
+  // notes: [      {        midi: 94,        velocity: 0.7480314960629921,        noteOffVelocity: 0,        ticks: 31392,        durationTicks: 48,      }, ...    ],
+  // controlChanges: {
+  //   "11": [ {          ticks: 31584,          value: 0.5905511811023622,        },
+  //     {          ticks: 77664,          value: 0.5905511811023622,        },],
+  //   "91": [        {          ticks: 31488,          value: 0.47244094488188976,        },        {          ticks: 77568,          value: 0.47244094488188976,        },      ], ...
+  //   ],
+  // },
+  // pitchBends: [],
+  // instrument: {number: 55, },
+  // channel: 2,
+  // endOfTrackTicks: undefined,}
+
   // Inline of MusicSynth.generateNote — returns Float32Array PCM for one note
-  static #renderNote(midiNote, durationSecs, delayMs, velocity) {
-    return SoundFont.getSample(midiNote, Math.max(durationSecs, 0.05), delayMs, Math.min(1.0, velocity))
+  static #renderNote(note, delay) {
+    return SoundFont.getSample(note.midi, Math.max(note.duration, 0.05), delay, Math.min(1.0, note.velocity))
+  }
+  
+  // notes must be in order
+  static #renderGroup(notes) {
+    const group_start_sample = Math.floor(notes[0].time * SAMPLE_RATE)
+    const group_duration = Math.max(...notes.map(n => n.time + n.duration))
+    const totalSamples = Math.ceil(SAMPLE_RATE * group_duration) + 1
+    const mix = new Float32Array(totalSamples)
+
+    for (const note of notes) {
+      const pcm = this.#renderNote(note, 0) //TODO: Doesn't consider instrument.
+      const start = Math.floor((note.time) * SAMPLE_RATE) - group_start_sample
+      for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
+    }
+    for (let i = 0; i < totalSamples; i++) mix[i] = Math.tanh(mix[i])
+    return Buffer.from(mix.buffer)
   }
 
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
@@ -195,18 +226,10 @@ class MusicTyping {
     const midi = new Midi(fs.readFileSync(midiPath))
     const allNotes = []
     midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
-    allNotes.sort((a, b) => a.time - b.time)
 
-    const totalSamples = Math.ceil(SAMPLE_RATE * (Math.max(midi.duration, ...allNotes.map(n => n.time + n.duration)) + 0.5))
-    const mix = new Float32Array(totalSamples)
-
-    for (const note of allNotes) {
-      const pcm = this.#renderNote(note.midi, note.duration, 0, note.velocity) //TODO: Doesn't consider instrument.
-      const start = Math.floor(note.time * SAMPLE_RATE)
-      for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
-    }
-    for (let i = 0; i < totalSamples; i++) mix[i] = Math.tanh(mix[i]) //TODO: Tanh necessary?
-    return Buffer.from(mix.buffer)
+    //TODO: Do i Need to worry about midi.header? 
+    allNotes.sort((a, b) => a.time - b.time)    
+    return this.#renderGroup(allNotes)
   }
 
   // ── Typing playback ────────────────────────────────────────────────────────
@@ -238,7 +261,7 @@ class MusicTyping {
       windowNotes.push(this.#notes[scanIdx++])
     if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ }
 
-    for (const note of windowNotes) {
+    for (const note of windowNotes) { //TODO: replace this with Speaker.sendNoteToSpeaker(this.#renderGroup(windowNotes))
       if (!SoundFont.isReady) break
       const delayMs = queueAheadMs + (note.time - windowStart) * 1000
       const pcm = Buffer.from(this.#renderNote(note.midi, note.duration, delayMs, note.velocity * this.#volume).buffer)

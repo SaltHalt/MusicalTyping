@@ -38,7 +38,7 @@ class SoundFont {
   }
 
   // Returns a Float32Array of `durationSecs` seconds of PCM for the given midi note.
-  static getSample(midiNote, durationSecs, delayMs, velocity = 0.8) {
+  static getSample(midiNote, durationSecs, delayMs, velocity) {
     if (!this.#ready) throw new Error('SoundFont not ready')
     const clamped = Math.max(MIDI_MIN, Math.min(MIDI_MAX, midiNote))
     const raw = this.#samples.get(clamped)
