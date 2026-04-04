@@ -236,12 +236,6 @@ class MusicTyping {
   // ── Typing playback ────────────────────────────────────────────────────────
 
   static #playMidiNotes() {
-    // const now = performance.now()
-    // this.#queueEndMs = Math.max(this.#queueEndMs, now)
-    // const queueAheadMs = this.#queueEndMs - now
-
-    // const isQueueTooLong = queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0
-    // if (isQueueTooLong) return //Needed?
 
     const endOfMidiReached = this.#currentNoteIdx >= this.#notes.length
     if (endOfMidiReached) {
@@ -256,13 +250,10 @@ class MusicTyping {
     //this.#currentNoteIdx is the next node to be played.
     //Thus, the delay imposed on the current note is how much logical time needs to pass minus how much real time has passed.
     
-    
     const currentNoteLogicTime = this.#notes[this.#currentNoteIdx].time
     const lastNoteIdx = findLastNote(this.#notes, this.#currentNoteIdx, currentNoteLogicTime + WINDOW_LENGTH_SECS)
 
     const windowNotes = this.#notes.slice(this.#currentNoteIdx, lastNoteIdx)
-    //if no notes are captured, play the next one as compensation
-    // if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ } 
 
     const pcm = this.#renderGroup(windowNotes)
 
@@ -274,7 +265,6 @@ class MusicTyping {
     const delayed_pcm = this.#prependSilence(pcm, delay)
 
     Speaker.sendNoteToSpeaker(delayed_pcm) 
-    // this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
     this.#currentNoteIdx = lastNoteIdx
     this.#lastNoteRealTime = currentNoteRealTime
     this.#lastNoteLogicTime = currentNoteLogicTime
