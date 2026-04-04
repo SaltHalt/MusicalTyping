@@ -6,11 +6,12 @@ const Speaker = require('./Speaker')
 const SoundFont = require('./SoundFont')
 
 const SAMPLE_RATE = 44100
-const WINDOW_LENGTH_SECS = 1
+const WINDOW_LENGTH_SECS = 0.3
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 class MusicTyping {
-
+  static #keyCounter = 0
+      
   static #context
   static #webviewProvider
   static #enabled
@@ -18,8 +19,8 @@ class MusicTyping {
 
   static #notes = []           // flat array of notes sorted by start time
   static #currentNoteIdx = 0
-  static #lastNoteRealTime
-  static #lastNoteLogicTime
+  static #lastNoteRealTime = 0
+  static #lastNoteLogicTime = 0 
   static #maxDelay = 3
 
   static #songList = []        // [{ name, path }]
@@ -29,7 +30,7 @@ class MusicTyping {
   static #isPlaying = false
   static #playStartTime = null
   static #totalDuration = null //TODO: Needed?
-
+  
   static #midiDuration = 0
 
   static stopBtn = null
@@ -48,7 +49,7 @@ class MusicTyping {
 
     this.#scanSongList()
     this.#loadCurrentMidi()
-
+    
     this.stopBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
     this.stopBtn.command = 'akazas-love.stopSong'
     this.stopBtn.text = 'Stop'
@@ -127,7 +128,8 @@ class MusicTyping {
     if (wasPlaying) Speaker.stopToSpeaker()
     this.#currentSongIdx = idx
     this.#currentNoteIdx = 0
-    this.#queueEndMs = 0
+    this.#lastNoteLogicTime = 0
+    this.#lastNoteRealTime = performance.now()
     this.#loadCurrentMidi()
     this.#webviewProvider?.postSongList()
     if (wasPlaying) this.playMidiFile(true)
@@ -234,9 +236,10 @@ class MusicTyping {
   }
 
   // ── Typing playback ────────────────────────────────────────────────────────
-
+  
   static #playMidiNotes() {
-
+    // console.log(this.#keyCounter)
+    this.#keyCounter++
     const endOfMidiReached = this.#currentNoteIdx >= this.#notes.length
     if (endOfMidiReached) {
       this.#currentNoteIdx = 0
@@ -257,11 +260,12 @@ class MusicTyping {
 
     const pcm = this.#renderGroup(windowNotes)
 
-    const now = performance.now() * 1000
+    const now = performance.now() / 1000
     const scheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
     const currentNoteRealTime = Math.max(now, scheduledRealTime)
     const delay = currentNoteRealTime - now
     if (delay > this.#maxDelay) return
+    // console.log(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
     const delayed_pcm = this.#prependSilence(pcm, delay)
 
     Speaker.sendNoteToSpeaker(delayed_pcm) 
