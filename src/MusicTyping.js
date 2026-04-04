@@ -90,9 +90,10 @@ class MusicTyping {
   static #loadCurrentMidi() {
     if (this.#songList.length === 0) return
     const midiPath = this.#songList[this.#currentSongIdx].path
-    this.#notes = this.#readMidiFile(midiPath)
-    this.#midiDuration = this.#getMidiDuration(midiPath)
-    console.log(`Loaded: ${midi.tracks.length} tracks, ${allNotes.length} notes, ${this.#midiDuration.toFixed(1)}s`)
+    const midi = this.#readMidiFile(midiPath)
+    this.#notes = this.#extractNotes(midi)
+    this.#midiDuration = midi.duration
+    console.log(`Loaded: ${midi.tracks.length} tracks, ${this.#notes.length} notes, ${this.#midiDuration.toFixed(1)}s`)
   }
 
   static #advanceToNextSong() {
@@ -164,15 +165,12 @@ class MusicTyping {
     this.stopBtn.show()
   }
 
-  static #getMidiDuration(midiPath) {
-    const midi = new Midi(fs.readFileSync(midiPath))
-    return midi.duration
-  }
-
   //Flattens and sorts notes by start time.
   static #readMidiFile(midiPath) {
-    const midi = new Midi(fs.readFileSync(midiPath))
-    const allNotes = []
+    return new Midi(fs.readFileSync(midiPath))
+  }
+  static #extractNotes(midi){
+    let allNotes = []
     midi.tracks.forEach(t => t.notes.forEach(n => allNotes.push(n)))
     allNotes.sort((a, b) => a.time - b.time)
     //TODO: Do i Need to worry about midi.header? 
@@ -215,7 +213,7 @@ class MusicTyping {
       for (let i = 0; i < pcm.length && start + i < totalSamples; i++) mix[start + i] += pcm[i]
     }
     for (let i = 0; i < totalSamples; i++) mix[i] = Math.tanh(mix[i])
-    return Buffer.from(mix.buffer)
+    return mix
   }
 
   // Sticks silence before the pcm
@@ -223,14 +221,15 @@ class MusicTyping {
     const silenceLength = Math.ceil(duration * SAMPLE_RATE)
     const delayed_pcm = new Float32Array(silenceLength + pcm.length)
     for (let i = 0; i < pcm.length; i++) {
-      out[silenceLength + i] = pcm[i]
+      delayed_pcm[silenceLength + i] = pcm[i]
     }
-    return out
+    return delayed_pcm
   }
 
   // Inline of MusicSynth.getMidiFileBuffer — mix all notes into one PCM buffer
   static async #renderMidiToBuffer(midiPath) {
-    const allNotes = this.#readMidiFile(midiPath)
+    const midi = this.#readMidiFile(midiPath)
+    const allNotes = this.#extractNotes(midi)
     return this.#renderGroup(allNotes)
   }
 
@@ -254,24 +253,30 @@ class MusicTyping {
 
     const windowStart = this.#notes[this.#currentNoteIdx].time
     const windowEnd = windowStart + WINDOW_LENGTH_SECS
+    const lastNoteIdx = findLastNote(this.#notes, this.#currentNoteIdx, windowEnd)
 
-    let scanIdx = this.#currentNoteIdx
-    const windowNotes = []
-    //TODO: Put this window selection in a function
-    while (scanIdx < this.#notes.length && this.#notes[scanIdx].time <= windowEnd) { 
-      windowNotes.push(this.#notes[scanIdx++])
-    }
-    if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ }
+    const windowNotes = this.#notes.slice(this.#currentNoteIdx, lastNoteIdx)
+    //if no notes are captured, play the next one as compensation
+    // if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ } 
 
     const pcm = this.#renderGroup(windowNotes)
     const delayed_pcm = this.#prependSilence(pcm, queueAheadMs * 1000) //Change this?
-    Speaker.sendNoteToSpeaker(delayed_pcm)
 
+    Speaker.sendNoteToSpeaker(delayed_pcm) 
+    // Speaker.sendToSpeaker(delayed_pcm, () => {})
     this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
-    this.#currentNoteIdx = scanIdx
+    this.#currentNoteIdx = lastNoteIdx
     this.#webviewProvider?.postSongList()
 
     vscode.window.setStatusBarMessage(`🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
+    
+    function findLastNote(notes, startIdx, endTime){
+      let currentIdx = startIdx
+      while(currentIdx < notes.length && notes[currentIdx].time <= endTime){
+        currentIdx++
+      }
+      return currentIdx
+    }
   }
 
   static #midiToNoteName(midi) {

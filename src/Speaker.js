@@ -25,7 +25,8 @@ class Speaker {
   }
 
   // Spawn a fresh process per note — no backpressure, overlapping playback handled by OS
-  static sendNoteToSpeaker(buffer) {
+  static sendNoteToSpeaker(arr) {
+    const buffer = Buffer.from(arr.buffer)
     if (!Speaker.#binaryPath || !Buffer.isBuffer(buffer) || !buffer.length) return
     try {
       const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
@@ -38,7 +39,8 @@ class Speaker {
   }
 
   // For full-song playback (pre-rendered, stoppable)
-  static sendToSpeaker(buffer, onFinish = null) {
+  static sendToSpeaker(arr, onFinish = null) {
+    const buffer = Buffer.from(arr.buffer)
     if (!Speaker.#binaryPath || !Buffer.isBuffer(buffer) || !buffer.length) {
       vscode.window.showErrorMessage('play-buffer: invalid buffer or binary missing')
       return
