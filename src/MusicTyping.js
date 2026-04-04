@@ -18,7 +18,9 @@ class MusicTyping {
 
   static #notes = []           // flat array of notes sorted by start time
   static #currentNoteIdx = 0
-  static #nextBlockStartTime = 0 //Needed?
+  static #lastNoteRealTime
+  static #lastNoteLogicTime
+  static #maxDelay = 3
 
   static #songList = []        // [{ name, path }]
   static #currentSongIdx = 0
@@ -28,9 +30,7 @@ class MusicTyping {
   static #playStartTime = null
   static #totalDuration = null //TODO: Needed?
 
-  static #MAX_QUEUE_MS = 1000
   static #midiDuration = 0
-  static #queueEndMs = 0
 
   static stopBtn = null
 
@@ -236,12 +236,12 @@ class MusicTyping {
   // ── Typing playback ────────────────────────────────────────────────────────
 
   static #playMidiNotes() {
-    const now = performance.now()
-    this.#queueEndMs = Math.max(this.#queueEndMs, now)
-    const queueAheadMs = this.#queueEndMs - now
+    // const now = performance.now()
+    // this.#queueEndMs = Math.max(this.#queueEndMs, now)
+    // const queueAheadMs = this.#queueEndMs - now
 
-    const isQueueTooLong = queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0
-    if (isQueueTooLong) return //Needed?
+    // const isQueueTooLong = queueAheadMs > this.#MAX_QUEUE_MS && queueAheadMs > 0
+    // if (isQueueTooLong) return //Needed?
 
     const endOfMidiReached = this.#currentNoteIdx >= this.#notes.length
     if (endOfMidiReached) {
@@ -251,21 +251,33 @@ class MusicTyping {
       return
     }
 
-    const windowStart = this.#notes[this.#currentNoteIdx].time
-    const windowEnd = windowStart + WINDOW_LENGTH_SECS
-    const lastNoteIdx = findLastNote(this.#notes, this.#currentNoteIdx, windowEnd)
+    //lastNoteRealTime is the RealTime when the last note starts playing
+    //lastNoteLogTime is the midi time when the block starts playing
+    //this.#currentNoteIdx is the next node to be played.
+    //Thus, the delay imposed on the current note is how much logical time needs to pass minus how much real time has passed.
+    
+    
+    const currentNoteLogicTime = this.#notes[this.#currentNoteIdx].time
+    const lastNoteIdx = findLastNote(this.#notes, this.#currentNoteIdx, currentNoteLogicTime + WINDOW_LENGTH_SECS)
 
     const windowNotes = this.#notes.slice(this.#currentNoteIdx, lastNoteIdx)
     //if no notes are captured, play the next one as compensation
     // if (!windowNotes.length) { windowNotes.push(this.#notes[this.#currentNoteIdx]); scanIdx++ } 
 
     const pcm = this.#renderGroup(windowNotes)
-    const delayed_pcm = this.#prependSilence(pcm, queueAheadMs * 1000) //Change this?
+
+    const now = performance.now() * 1000
+    const scheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
+    const currentNoteRealTime = Math.max(now, scheduledRealTime)
+    const delay = currentNoteRealTime - now
+    if (delay > this.#maxDelay) return
+    const delayed_pcm = this.#prependSilence(pcm, delay)
 
     Speaker.sendNoteToSpeaker(delayed_pcm) 
-    // Speaker.sendToSpeaker(delayed_pcm, () => {})
-    this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
+    // this.#queueEndMs = this.#queueEndMs + WINDOW_LENGTH_SECS * 1000
     this.#currentNoteIdx = lastNoteIdx
+    this.#lastNoteRealTime = currentNoteRealTime
+    this.#lastNoteLogicTime = currentNoteLogicTime
     this.#webviewProvider?.postSongList()
 
     vscode.window.setStatusBarMessage(`🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
