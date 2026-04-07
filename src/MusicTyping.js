@@ -187,8 +187,8 @@ class MusicTyping {
     }
     if (!this.#songList.length) { vscode.window.showWarningMessage('No MIDI files found in media/'); return }
     await SoundFont.waitUntilReady()
-    const buffer = await this.#renderMidiToBuffer(this.#songList[this.#currentSongIdx].path)
-    // const buffer = this.#mixNotes(this.#pcms).map(Math.tanh)
+    // const buffer = await this.#renderMidiToBuffer(this.#songList[this.#currentSongIdx].path)
+    const buffer = this.#mixNotes(this.#pcms).map(x => x * this.#volume).map(Math.tanh)
     this.#totalDuration = buffer.length / SAMPLE_RATE
     this.#playStartTime = Date.now()
     this.#isPlaying = true
@@ -350,7 +350,7 @@ class MusicTyping {
 
     const windowNotes = this.#pcms.slice(this.#currentNoteIdx, lastNoteIdx)
 
-    const pcm = this.#mixNotes(windowNotes).map(Math.tanh)
+    const pcm = this.#mixNotes(windowNotes).map(x => x * this.#volume).map(Math.tanh)
 
     const now = performance.now() / 1000
     const scheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
