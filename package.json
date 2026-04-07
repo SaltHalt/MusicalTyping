@@ -135,7 +135,8 @@
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
     "follow-redirects": "^1.15.11",
-    "mpg123-decoder": "^1.0.3"
+    "mpg123-decoder": "^1.0.3",
+    "node-liblzma": "^4.0.2"
   },
   "devDependencies": {
     "@types/node": "24.x",

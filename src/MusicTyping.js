@@ -1,4 +1,5 @@
 const { Midi } = require('@tonejs/midi')
+const { xzSync, unxzSync } = require('node-liblzma')
 const fs = require('fs')
 const path = require('path')
 const vscode = require('vscode')
@@ -109,11 +110,12 @@ class MusicTyping {
     const cacheFile = path.join(this.#cacheDir, baseName + ".pcms")
 
     if (fs.existsSync(cacheFile)) {
-      const buf = fs.readFileSync(cacheFile)
+      const compressed = fs.readFileSync(cacheFile)
+      const buf = unxzSync(compressed)
       const { duration, pcms } = v8.deserialize(buf)
       this.#midiDuration = duration
       this.#pcms = pcms
-      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length} MB`)
+      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length/1000000} MB`)
     } else {
       const midi = this.#readMidiFile(midiPath)
       const notes = this.#extractNotes(midi)
@@ -122,8 +124,9 @@ class MusicTyping {
       this.#midiDuration = midi.duration
 
       const buf = v8.serialize({ duration: this.#midiDuration, pcms: this.#pcms })
+      const compressed = xzSync(buf, { preset: 9 })
 
-      fs.writeFileSync(cacheFile, buf)
+      fs.writeFileSync(cacheFile, compressed)
 
       console.log(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${pcmSize / 1000000} MB`)
   }
