@@ -339,7 +339,7 @@ class MusicTyping {
     const delayed_pcm = this.#prependSilence(pcm, delay)
 
     Speaker.sendNoteToSpeaker(delayed_pcm) 
-    this.#currentNoteIdx = lastNwoteIdx
+    this.#currentNoteIdx = lastNoteIdx
     this.#lastNoteRealTime = currentNoteRealTime
     this.#lastNoteLogicTime = currentNoteLogicTime
     this.#webviewProvider?.postSongList()
