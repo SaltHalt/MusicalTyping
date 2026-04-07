@@ -2,6 +2,7 @@ const { Midi } = require('@tonejs/midi')
 const fs = require('fs')
 const path = require('path')
 const vscode = require('vscode')
+const v8 = require('v8')
 const Speaker = require('./Speaker')
 const SoundFont = require('./SoundFont')
 
@@ -19,6 +20,7 @@ class MusicTyping {
   static #volume
   static #progressInterval = null
 
+  static #cacheDir = null
   // static #notes = []           // flat array of notes sorted by start time
   static #pcms = []                    // flat array of notes sorted by start time
   static #currentNoteIdx = 0
@@ -48,6 +50,9 @@ class MusicTyping {
     this.#volume = config.get('volume')
     this.#shuffle = config.get('shuffle') ?? false
     this.#loop = config.get('loop') ?? true
+
+    this.#cacheDir = path.join(context.globalStoragePath, 'midi_cache')
+    fs.mkdirSync(this.#cacheDir, { recursive: true })
 
     this.#scanSongList()
 
@@ -98,12 +103,30 @@ class MusicTyping {
     if (this.#songList.length === 0) return
     //if cache not found
     const midiPath = this.#songList[this.#currentSongIdx].path
-    const midi = this.#readMidiFile(midiPath)
-    const notes = this.#extractNotes(midi)
-    this.#pcms = this.#preRenderNotes(notes)
-    const size = this.#pcms.reduce(((acc, pcm) => acc + pcm.pcm.length), 0) * 4
-    this.#midiDuration = midi.duration
-    console.log(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${size / 1000000} MB`)
+
+    const baseName = /.*\\([^\\]*)\..*/.exec(midiPath)[1]
+    
+    const cacheFile = path.join(this.#cacheDir, baseName + ".pcms")
+
+    if (fs.existsSync(cacheFile)) {
+      const buf = fs.readFileSync(cacheFile)
+      const { duration, pcms } = v8.deserialize(buf)
+      this.#midiDuration = duration
+      this.#pcms = pcms
+      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length} MB`)
+    } else {
+      const midi = this.#readMidiFile(midiPath)
+      const notes = this.#extractNotes(midi)
+      this.#pcms = this.#preRenderNotes(notes)
+      const pcmSize = this.#pcms.reduce(((acc, pcm) => acc + pcm.pcm.byteLength), 0)
+      this.#midiDuration = midi.duration
+
+      const buf = v8.serialize({ duration: this.#midiDuration, pcms: this.#pcms })
+
+      fs.writeFileSync(cacheFile, buf)
+
+      console.log(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${pcmSize / 1000000} MB`)
+  }
   }
 
   static #advanceToNextSong() {
