@@ -14,7 +14,7 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 
 class MusicTyping {
   static #keyCounter = 0
-      
+
   static #context
   static #webviewProvider
   static #enabled
@@ -26,7 +26,7 @@ class MusicTyping {
   static #pcms = []                    // flat array of notes sorted by start time
   static #currentNoteIdx = 0
   static #lastNoteRealTime = performance.now() / 1000
-  static #lastNoteLogicTime = 0 
+  static #lastNoteLogicTime = 0
 
   static #songList = []        // [{ name, path }]
   static #currentSongIdx = 0
@@ -35,7 +35,7 @@ class MusicTyping {
   static #isPlaying = false
   static #playStartTime = null
   static #totalDuration = null //TODO: Needed?
-  
+
   static #midiDuration = 0
 
   static stopBtn = null
@@ -57,10 +57,10 @@ class MusicTyping {
 
     this.#scanSongList()
 
-    ;(async () => {
-      await SoundFont.waitUntilReady()
-      this.#loadCurrentMidi()
-    })().catch(e => console.error('MusicTyping async init failed:', e))
+      ; (async () => {
+        await SoundFont.waitUntilReady()
+        this.#loadCurrentMidi()
+      })().catch(e => console.error('MusicTyping async init failed:', e))
 
     this.stopBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
     this.stopBtn.command = 'akazas-love.stopSong'
@@ -106,7 +106,7 @@ class MusicTyping {
     const midiPath = this.#songList[this.#currentSongIdx].path
 
     const baseName = /.*\\([^\\]*)\..*/.exec(midiPath)[1]
-    
+
     const cacheFile = path.join(this.#cacheDir, baseName + ".pcms")
 
     if (fs.existsSync(cacheFile)) {
@@ -115,7 +115,7 @@ class MusicTyping {
       const { duration, pcms } = v8.deserialize(buf)
       this.#midiDuration = duration
       this.#pcms = pcms
-      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length/1000000} MB`)
+      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length / 1000000} MB`)
     } else {
       const midi = this.#readMidiFile(midiPath)
       const notes = this.#extractNotes(midi)
@@ -129,7 +129,7 @@ class MusicTyping {
       fs.writeFileSync(cacheFile, compressed)
 
       console.log(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${pcmSize / 1000000} MB`)
-  }
+    }
   }
 
   static #advanceToNextSong() {
@@ -206,7 +206,7 @@ class MusicTyping {
       this.#progressInterval = null
       // vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
       console.log("Callback activates.")
-      if (this.#loop || this.#shuffle)  { this.#advanceToNextSong(); this.playMidiFile(true) }
+      if (this.#loop || this.#shuffle) { this.#advanceToNextSong(); this.playMidiFile(true) }
       else this.#webviewProvider?.postSongList()
     })
     this.stopBtn.show()
@@ -217,7 +217,7 @@ class MusicTyping {
     return new Midi(fs.readFileSync(midiPath))
   }
 
-  static #extractNotes(midi){
+  static #extractNotes(midi) {
     const midiTracks = midi.tracks.filter(track => track.notes.length > 0)
     // await loadInstruments(midiTracks.map(track => track.instrument.number))
     let allNotes = []
@@ -276,18 +276,18 @@ class MusicTyping {
     return mix
   }
 
-  static #mixNotes(pcms){
+  static #mixNotes(pcms) {
     const precedingSamples = Math.floor(pcms[0].time * SAMPLE_RATE)
-    let sampleCount = Math.max(...pcms.map(pcm => Math.floor(pcm.time * SAMPLE_RATE) + pcm.pcm.length )) - precedingSamples
+    let sampleCount = Math.max(...pcms.map(pcm => Math.floor(pcm.time * SAMPLE_RATE) + pcm.pcm.length)) - precedingSamples
     let out_pcm = new Float32Array(sampleCount)
-    for(const pcm_i in pcms){
+    for (const pcm_i in pcms) {
       const offset = Math.floor(pcms[pcm_i].time * SAMPLE_RATE) - precedingSamples
-      const pcm = pcms[pcm_i].pcm 
-      for(let i = 0; i < pcm.length; i++){
+      const pcm = pcms[pcm_i].pcm
+      for (let i = 0; i < pcm.length; i++) {
         // if (i in out_pcm){
-          out_pcm[offset + i] += pcm[i]
+        out_pcm[offset + i] += pcm[i]
         // } else{
-          // out_pcm[offset + i] = pcm[i]
+        // out_pcm[offset + i] = pcm[i]
         // }
       }
     }
@@ -312,22 +312,22 @@ class MusicTyping {
     return this.#renderGroup(allNotes).map(Math.tanh)
   }
 
-  static #preRenderNotes(notes){
+  static #preRenderNotes(notes) {
     const renderedNotes = []
-    for (let i = 0; i < notes.length; i++){
+    for (let i = 0; i < notes.length; i++) {
       let group = {}
       group.time = notes[i].time
       const start_i = i
-      while(i+1 < notes.length && notes[i+1].time <= group.time){
+      while (i + 1 < notes.length && notes[i + 1].time <= group.time) {
         i++
       }
-      group.pcm = this.#renderGroup(notes.slice(start_i, i+1))
+      group.pcm = this.#renderGroup(notes.slice(start_i, i + 1))
       renderedNotes.push(group)
     }
     return renderedNotes
   }
   // ── Typing playback ────────────────────────────────────────────────────────
-  
+
   static #playMidiNotes() {
     if (!this.#pcms?.length) return //If pcms isn't ready, ignore keypress.
 
@@ -345,7 +345,7 @@ class MusicTyping {
     //lastNoteLogTime is the midi time when the block starts playing
     //this.#currentNoteIdx is the next node to be played.
     //Thus, the delay imposed on the current note is how much logical time needs to pass minus how much real time has passed.
-    
+
     const currentNoteLogicTime = this.#pcms[this.#currentNoteIdx].time
     const lastNoteIdx = findLastNote(this.#pcms, this.#currentNoteIdx, currentNoteLogicTime + WINDOW_LENGTH_SECS)
 
@@ -354,17 +354,17 @@ class MusicTyping {
     const pcm = this.#mixNotes(windowNotes).map(x => x * this.#volume).map(Math.tanh)
 
     const now = performance.now() / 1000
-    const scheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
+    const proposedScheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
     const currentNoteRealTime = Math.max(now, scheduledRealTime)
     const delay = currentNoteRealTime - now
-    if (delay > MAX_DELAY){ 
+    if (delay > MAX_DELAY) {
       // console.log("SKIPPED!")  
       return
     }
     // console.log(delay)
     // console.log(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
-    const delayed_pcm = this.#prependSilence(pcm, delay)
-    console.log(pcm.length)
+    // const delayed_pcm = this.#prependSilence(pcm, delay)
+    // console.log(pcm.length)
     // const t = performance.now()
     if (delay > 0) {
       setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delay * 1000)
@@ -379,10 +379,10 @@ class MusicTyping {
     this.#webviewProvider?.postSongList()
 
     // vscode.window.setStatusBarMessage(`🎵 ${windowNotes.map(n => n.name).join('+')}`, 1500)
-    
-    function findLastNote(notes, startIdx, endTime){
+
+    function findLastNote(notes, startIdx, endTime) {
       let currentIdx = startIdx
-      while(currentIdx < notes.length && notes[currentIdx].time <= endTime){
+      while (currentIdx < notes.length && notes[currentIdx].time <= endTime) {
         currentIdx++
       }
       return currentIdx
