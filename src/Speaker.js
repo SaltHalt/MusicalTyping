@@ -46,9 +46,7 @@ class Speaker {
       return
     }
     Speaker.#killCurrentProcess()
-    console.log("New process started A.")
     vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
-    console.log("New process started B.")
     const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
     Speaker.#currentPlayProcess = proc
     proc.stdin.write(buffer)

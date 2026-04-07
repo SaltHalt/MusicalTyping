@@ -364,8 +364,15 @@ class MusicTyping {
     // console.log(delay)
     // console.log(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
     const delayed_pcm = this.#prependSilence(pcm, delay)
-
-    Speaker.sendNoteToSpeaker(delayed_pcm) 
+    console.log(pcm.length)
+    // const t = performance.now()
+    if (delay > 0) {
+      setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delay * 1000)
+    } else {
+      Speaker.sendNoteToSpeaker(pcm)
+    }
+    // Speaker.sendNoteToSpeaker(delayed_pcm) 
+    // console.log('send took', performance.now() - t, 'ms')
     this.#currentNoteIdx = lastNoteIdx
     this.#lastNoteRealTime = currentNoteRealTime
     this.#lastNoteLogicTime = currentNoteLogicTime
