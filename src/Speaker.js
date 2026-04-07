@@ -46,16 +46,20 @@ class Speaker {
       return
     }
     Speaker.#killCurrentProcess()
+    console.log("New process started A.")
     vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
+    console.log("New process started B.")
     const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
     Speaker.#currentPlayProcess = proc
     proc.stdin.write(buffer)
     proc.stdin.end()
     proc.on('error', e => vscode.window.showWarningMessage('play-buffer error: ' + e.message))
     proc.on('exit', (_, signal) => {
-      Speaker.#currentPlayProcess = null
-      vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-      if (signal == null && onFinish) onFinish()
+      if(Speaker.#currentPlayProcess === proc ){
+        Speaker.#currentPlayProcess = null
+        vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
+        if (signal == null && onFinish) onFinish()
+      }
     })
   }
 

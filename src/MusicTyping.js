@@ -204,8 +204,9 @@ class MusicTyping {
       this.stopBtn.hide()
       clearInterval(this.#progressInterval)
       this.#progressInterval = null
-      vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-      if (this.#loop || this.#shuffle) { this.#advanceToNextSong(); this.playMidiFile(true) }
+      // vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
+      console.log("Callback activates.")
+      if (this.#loop || this.#shuffle)  { this.#advanceToNextSong(); this.playMidiFile(true) }
       else this.#webviewProvider?.postSongList()
     })
     this.stopBtn.show()
