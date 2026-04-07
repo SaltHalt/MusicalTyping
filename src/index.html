@@ -128,9 +128,14 @@
     }
 
     window.addEventListener('message', ({ data: msg }) => {
+      if (msg.type === 'PLAY_PCM') console.log('IPC lag:', Date.now() - msg .sentAt, 'ms')
       if (!msg?.type) return
       if (msg.type === 'SONG_LIST') applySongList(msg)
+      
     })
+    // window.addEventListener('message', ({data}) => {
+    // })
+
   </script>
 </body>
 </html>

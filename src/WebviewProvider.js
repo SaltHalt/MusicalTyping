@@ -28,10 +28,10 @@ class WebviewProvider {
 
     this.#context.subscriptions.push(
       webviewView.onDidChangeVisibility(() => {
-        if (webviewView.visible) { this.#postMessage(this.#getConfig()); this.postSongList() }
+        if (webviewView.visible) { this.postMessage(this.#getConfig()); this.postSongList() }
       })
     )
-    this.#postMessage(this.#getConfig())
+    this.postMessage(this.#getConfig())
     this.postSongList()
   }
 
@@ -40,14 +40,14 @@ class WebviewProvider {
     this.#keystrokeTs.push(now)
     while (this.#keystrokeTs.length && now - this.#keystrokeTs[0] > 2000) this.#keystrokeTs.shift()
     const rate = this.#keystrokeTs.length < 2 ? 0 : this.#keystrokeTs.length / 2
-    this.#postMessage({ type: 'KEY', typingRate: rate })
+    this.postMessage({ type: 'KEY', typingRate: rate })
   }
 
-  reloadConfigs() { this.#postMessage(this.#getConfig()) }
+  reloadConfigs() { this.postMessage(this.#getConfig()) }
 
   postSongList() {
     const MT = require('./MusicTyping')
-    this.#postMessage({ type: 'SONG_LIST', ...MT.getSongList() })
+    this.postMessage({ type: 'SONG_LIST', ...MT.getSongList() })
   }
 
   #getConfig() {
@@ -77,7 +77,7 @@ class WebviewProvider {
     return `rgba(${r},${g},${b},`
   }
 
-  #postMessage(msg) { this.#webview?.postMessage(msg) }
+  postMessage(msg) { this.#webview?.postMessage(msg) }
 }
 
 module.exports = WebviewProvider

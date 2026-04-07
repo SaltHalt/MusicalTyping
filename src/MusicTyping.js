@@ -363,9 +363,15 @@ class MusicTyping {
     }
     // console.log(delay)
     // console.log(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
-    const delayed_pcm = this.#prependSilence(pcm, delay)
-    console.log(pcm.length)
+    // const delayed_pcm = this.#prependSilence(pcm, delay)
+    // console.log(pcm.length)
     // const t = performance.now()
+
+    const t = Date.now()
+    this.#webviewProvider.postMessage({ type: 'PLAY_PCM', 
+      // pcm: Array.from(pcm),
+       sentAt: t })
+
     if (delay > 0) {
       setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delay * 1000)
     } else {
