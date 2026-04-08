@@ -89,7 +89,7 @@ class MusicTyping {
   // ── Song list ──────────────────────────────────────────────────────────────
 
   static #scanSongList() {
-    const mediaDir = path.join(this.#context.extensionPath, 'media')
+    const mediaDir = vscode.workspace.getConfiguration('akazas-love').get('mediaDir')
     try {
       this.#songList = fs.readdirSync(mediaDir)
         .filter(f => f.toLowerCase().endsWith('.mid'))
@@ -355,7 +355,7 @@ class MusicTyping {
 
     const now = performance.now() / 1000
     const proposedScheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
-    const currentNoteRealTime = Math.max(now, scheduledRealTime)
+    const currentNoteRealTime = Math.max(now, proposedScheduledRealTime)
     const delay = currentNoteRealTime - now
     if (delay > MAX_DELAY) {
       // console.log("SKIPPED!")  
@@ -367,7 +367,10 @@ class MusicTyping {
     // console.log(pcm.length)
     // const t = performance.now()
     if (delay > 0) {
-      setTimeout(() => Speaker.sendNoteToSpeaker(pcm), delay * 1000)
+      setTimeout(() => {Speaker.sendNoteToSpeaker(pcm)
+        console.log('error=', performance.now()/1000 - currentNoteRealTime , 'ms')
+      }, delay * 1000)
+      
     } else {
       Speaker.sendNoteToSpeaker(pcm)
     }

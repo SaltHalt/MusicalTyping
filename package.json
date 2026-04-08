@@ -121,6 +121,11 @@
           "type": "boolean",
           "default": true,
           "description": "Loop the playlist when it reaches the end"
+        }, 
+        "akazas-love.mediaDir": {
+          "type": "string",
+          "default": "D:\\Programs\\vscode-akazas-love\\media",
+          "description": "Path to folder containing MIDI files"
         }
       }
     }

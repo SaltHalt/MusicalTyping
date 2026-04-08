@@ -8,4 +8,5 @@ eslint.config.mjs
 jsconfig.json
 node_modules
 src/
+media/
 vsc-extension-quickstart.md
