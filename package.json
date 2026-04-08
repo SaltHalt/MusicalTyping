@@ -126,6 +126,16 @@
           "type": "string",
           "default": "D:\\Programs\\vscode-akazas-love\\media",
           "description": "Path to folder containing MIDI files"
+        }, 
+        "akazas-love.windowSize": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Size of note window in seconds"
+        },
+        "akazas-love.maxDelay": {
+          "type": "number",
+          "default": 3,
+          "description": "Max amount of music that can be accumulated."
         }
       }
     }

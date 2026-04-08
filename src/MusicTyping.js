@@ -8,8 +8,8 @@ const Speaker = require('./Speaker')
 const SoundFont = require('./SoundFont')
 
 const SAMPLE_RATE = 44100
-const WINDOW_LENGTH_SECS = 0.2
-const MAX_DELAY = 1
+// const WINDOW_LENGTH_SECS = 0.2
+// const MAX_DELAY = 1
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 class MusicTyping {
@@ -205,7 +205,7 @@ class MusicTyping {
       clearInterval(this.#progressInterval)
       this.#progressInterval = null
       // vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-      console.log("Callback activates.")
+      // console.log("Callback activates.")
       if (this.#loop || this.#shuffle) { this.#advanceToNextSong(); this.playMidiFile(true) }
       else this.#webviewProvider?.postSongList()
     })
@@ -345,9 +345,9 @@ class MusicTyping {
     //lastNoteLogTime is the midi time when the block starts playing
     //this.#currentNoteIdx is the next node to be played.
     //Thus, the delay imposed on the current note is how much logical time needs to pass minus how much real time has passed.
-
+    const windowLength = vscode.workspace.getConfiguration('akazas-love').get('windowSize')
     const currentNoteLogicTime = this.#pcms[this.#currentNoteIdx].time
-    const lastNoteIdx = findLastNote(this.#pcms, this.#currentNoteIdx, currentNoteLogicTime + WINDOW_LENGTH_SECS)
+    const lastNoteIdx = findLastNote(this.#pcms, this.#currentNoteIdx, currentNoteLogicTime + windowLength)
 
     const windowNotes = this.#pcms.slice(this.#currentNoteIdx, lastNoteIdx)
 
@@ -357,7 +357,8 @@ class MusicTyping {
     const proposedScheduledRealTime = this.#lastNoteRealTime + (currentNoteLogicTime - this.#lastNoteLogicTime)
     const currentNoteRealTime = Math.max(now, proposedScheduledRealTime)
     const delay = currentNoteRealTime - now
-    if (delay > MAX_DELAY) {
+    const max_delay = vscode.workspace.getConfiguration('akazas-love').get('maxDelay')
+    if (delay > max_delay) {
       // console.log("SKIPPED!")  
       return
     }
@@ -368,7 +369,7 @@ class MusicTyping {
     // const t = performance.now()
     if (delay > 0) {
       setTimeout(() => {Speaker.sendNoteToSpeaker(pcm)
-        console.log('error=', performance.now()/1000 - currentNoteRealTime , 'ms')
+        // console.log('error=', performance.now()/1000 - currentNoteRealTime , 'ms')
       }, delay * 1000)
       
     } else {
