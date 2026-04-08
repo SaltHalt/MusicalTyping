@@ -23,7 +23,7 @@
     "relaxing",
     "typing sound"
   ],
-  "icon": "media/akaza.png",
+  "icon": "icons/akaza.png",
   "galleryBanner": {
     "color": "#fff",
     "theme": "light"
@@ -38,7 +38,7 @@
         {
           "id": "akazas-love-webview",
           "title": "Piano Typing",
-          "icon": "media/akaza.svg"
+          "icon": "icons/akaza.svg"
         }
       ]
     },
@@ -48,7 +48,7 @@
           "type": "webview",
           "id": "akazas-love.webview",
           "name": "Webview",
-          "icon": "media/akaza.svg"
+          "icon": "icons/akaza.svg"
         }
       ]
     },
