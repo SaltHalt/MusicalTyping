@@ -64,7 +64,7 @@ class MusicTyping {
     fs.mkdirSync(this.#cacheDir, { recursive: true })
 
     this.#scanSongList()
-
+    this.#currentSongIdx = Math.floor(Math.random() * this.#songList.length)
       ; (async () => {
         await SoundFont.waitUntilReady()
         this.#loadCurrentMidi()
