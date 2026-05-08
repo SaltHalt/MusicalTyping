@@ -3,8 +3,13 @@ const MusicTyping = require('./MusicTyping')
 const SoundFont = require('./SoundFont')
 const Speaker = require('./Speaker')
 const WebviewProvider = require('./WebviewProvider')
+const Logger = require('./Logger')
 
 async function activate(context) {
+  console.log("ACTIVATE")
+  const log = vscode.window.createOutputChannel('Akaza\'s Love', { log: true })
+  context.subscriptions.push(log)
+  Logger.init(log)
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
   statusBarItem.text = 'Akaza: activating...'
   statusBarItem.color = '#ffbbff'

@@ -6,6 +6,7 @@ const vscode = require('vscode')
 const v8 = require('v8')
 const Speaker = require('./Speaker')
 const SoundFont = require('./SoundFont')
+const Logger = require('./Logger')
 
 const SAMPLE_RATE = 44100
 // const WINDOW_LENGTH_SECS = 0.2
@@ -43,16 +44,23 @@ class MusicTyping {
   // ── Init ───────────────────────────────────────────────────────────────────
 
   static init(context, webviewProvider) {
+    Logger.info("1")
     this.#context = context
     this.#webviewProvider = webviewProvider
 
+    Logger.info("2")
     const config = vscode.workspace.getConfiguration('akazas-love')
+    Logger.info("3")
     this.#enabled = config.get('musicTyping')
     this.#volume = config.get('volume')
     this.#shuffle = config.get('shuffle') ?? false
     this.#loop = config.get('loop') ?? true
-
+    Logger.info("4")
+    Logger.info("5")
+    Logger.info("6")
     this.#cacheDir = path.join(context.globalStoragePath, 'midi_cache')
+    Logger.info("7")
+    Logger.info(this.#cacheDir)
     fs.mkdirSync(this.#cacheDir, { recursive: true })
 
     this.#scanSongList()
@@ -60,12 +68,15 @@ class MusicTyping {
       ; (async () => {
         await SoundFont.waitUntilReady()
         this.#loadCurrentMidi()
-      })().catch(e => console.error('MusicTyping async init failed:', e))
-
+      })().catch(e => Logger.error('MusicTyping async init failed:', e))
+    Logger.info("A")
     this.stopBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
+    Logger.info("B")
     this.stopBtn.command = 'akazas-love.stopSong'
     this.stopBtn.text = 'Stop'
+    Logger.info("C")
     context.subscriptions.push(this.stopBtn)
+    Logger.info("D")
 
     // Typing listener
     context.subscriptions.push(
@@ -95,9 +106,9 @@ class MusicTyping {
         .filter(f => f.toLowerCase().endsWith('.mid'))
         .map(f => ({ name: path.basename(f, '.mid'), path: path.join(mediaDir, f) }))
     } catch (e) {
-      console.error('Failed to scan media/ for MIDI files:', e)
+      Logger.error('Failed to scan media/ for MIDI files:', e)
     }
-    console.log(`Found ${this.#songList.length} MIDI file(s)`)
+    Logger.info(`Found ${this.#songList.length} MIDI file(s)`)
   }
 
   static #loadCurrentMidi() {
@@ -115,7 +126,7 @@ class MusicTyping {
       const { duration, pcms } = v8.deserialize(buf)
       this.#midiDuration = duration
       this.#pcms = pcms
-      console.log(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length / 1000000} MB`)
+      Logger.info(`Loaded cache: ${this.#midiDuration.toFixed(1)}s, ${buf.length / 1000000} MB`)
     } else {
       const midi = this.#readMidiFile(midiPath)
       const notes = this.#extractNotes(midi)
@@ -128,7 +139,7 @@ class MusicTyping {
 
       fs.writeFileSync(cacheFile, compressed)
 
-      console.log(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${pcmSize / 1000000} MB`)
+      Logger.info(`Loaded: ${midi.tracks.length} tracks, ${notes.length} notes, ${this.#midiDuration.toFixed(1)}s, ${pcmSize / 1000000} MB`)
     }
   }
 
@@ -205,7 +216,7 @@ class MusicTyping {
       clearInterval(this.#progressInterval)
       this.#progressInterval = null
       // vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
-      // console.log("Callback activates.")
+      // Logger.info("Callback activates.")
       if (this.#loop || this.#shuffle) { this.#advanceToNextSong(); this.playMidiFile(true) }
       else this.#webviewProvider?.postSongList()
     })
@@ -331,7 +342,7 @@ class MusicTyping {
   static #playMidiNotes() {
     if (!this.#pcms?.length) return //If pcms isn't ready, ignore keypress.
 
-    // console.log(this.#keyCounter)
+    // Logger.info(this.#keyCounter)
     this.#keyCounter++
     const endOfMidiReached = this.#currentNoteIdx >= this.#pcms.length
     if (endOfMidiReached) {
@@ -359,24 +370,25 @@ class MusicTyping {
     const delay = currentNoteRealTime - now
     const max_delay = vscode.workspace.getConfiguration('akazas-love').get('maxDelay')
     if (delay > max_delay) {
-      // console.log("SKIPPED!")  
+      // Logger.info("SKIPPED!")  
       return
     }
-    // console.log(delay)
-    // console.log(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
+    // Logger.info(delay)
+    // Logger.info(`ScheduledTime: ${scheduledRealTime}, Now: ${now}, Delay: ${delay}`)
     // const delayed_pcm = this.#prependSilence(pcm, delay)
-    // console.log(pcm.length)
+    // Logger.info(pcm.length)
     // const t = performance.now()
     if (delay > 0) {
-      setTimeout(() => {Speaker.sendNoteToSpeaker(pcm)
-        // console.log('error=', performance.now()/1000 - currentNoteRealTime , 'ms')
+      setTimeout(() => {
+        Speaker.sendNoteToSpeaker(pcm)
+        // Logger.info('error=', performance.now()/1000 - currentNoteRealTime , 'ms')
       }, delay * 1000)
-      
+
     } else {
       Speaker.sendNoteToSpeaker(pcm)
     }
     // Speaker.sendNoteToSpeaker(delayed_pcm) 
-    // console.log('send took', performance.now() - t, 'ms')
+    // Logger.info('send took', performance.now() - t, 'ms')
     this.#currentNoteIdx = lastNoteIdx
     this.#lastNoteRealTime = currentNoteRealTime
     this.#lastNoteLogicTime = currentNoteLogicTime
