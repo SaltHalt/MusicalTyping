@@ -44,23 +44,15 @@ class MusicTyping {
   // ── Init ───────────────────────────────────────────────────────────────────
 
   static init(context, webviewProvider) {
-    Logger.info("1")
     this.#context = context
     this.#webviewProvider = webviewProvider
 
-    Logger.info("2")
     const config = vscode.workspace.getConfiguration('akazas-love')
-    Logger.info("3")
     this.#enabled = config.get('musicTyping')
     this.#volume = config.get('volume')
     this.#shuffle = config.get('shuffle') ?? false
     this.#loop = config.get('loop') ?? true
-    Logger.info("4")
-    Logger.info("5")
-    Logger.info("6")
     this.#cacheDir = path.join(context.globalStoragePath, 'midi_cache')
-    Logger.info("7")
-    Logger.info(this.#cacheDir)
     fs.mkdirSync(this.#cacheDir, { recursive: true })
 
     this.#scanSongList()
@@ -69,14 +61,10 @@ class MusicTyping {
         await SoundFont.waitUntilReady()
         this.#loadCurrentMidi()
       })().catch(e => Logger.error('MusicTyping async init failed:', e))
-    Logger.info("A")
     this.stopBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100)
-    Logger.info("B")
     this.stopBtn.command = 'akazas-love.stopSong'
     this.stopBtn.text = 'Stop'
-    Logger.info("C")
     context.subscriptions.push(this.stopBtn)
-    Logger.info("D")
 
     // Typing listener
     context.subscriptions.push(
