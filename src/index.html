@@ -2,33 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
   <style>
-    html, body { padding: 0; margin: 0; background: transparent; font-family: system-ui, sans-serif; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    #player {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    :root {
+      --bg:        #1e1e1e;
+      --surface:   #2d2d2d;
+      --border:    #444;
+      --fg:        #cccccc;
+      --fg-dim:    #888;
+      --accent:    #0e639c;
+      --accent-fg: #ffffff;
+      --green:     #4caf50;
+      --radius:    4px;
     }
 
+    html, body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, sans-serif;
+      font-size: 12px;
+      height: 100%;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px;
+      height: 100%;
+    }
+
+    /* ── Status ── */
+    #status {
+      font-size: 11px;
+      color: var(--fg-dim);
+      text-align: center;
+      min-height: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Now playing ── */
     #now-playing {
       font-size: 11px;
-      color: var(--vscode-descriptionForeground, #999);
+      color: var(--fg-dim);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       text-align: center;
       min-height: 15px;
     }
-    #now-playing.active { color: var(--vscode-foreground, #ccc); }
+    #now-playing.active { color: var(--fg); }
 
-    .bar-label { font-size: 10px; color: var(--vscode-descriptionForeground, #666); }
+    /* ── Progress bars ── */
+    .bar-label { font-size: 10px; color: var(--fg-dim); margin-bottom: 2px; }
     .bar-wrap {
       width: 100%; height: 4px;
-      background: var(--vscode-scrollbarSlider-background, #444);
+      background: var(--border);
       border-radius: 2px; overflow: hidden;
     }
     .bar-fill {
@@ -36,101 +69,237 @@
       border-radius: 2px;
       transition: width 0.4s linear;
     }
-    #audio-bar  { background: var(--vscode-progressBar-background, #0e639c); }
-    #midi-bar   { background: var(--vscode-charts-green, #4caf50); transition-duration: 0.15s; }
+    #audio-bar { background: var(--accent); }
+    #midi-bar  { background: var(--green); transition-duration: 0.15s; }
 
-    #time-label { font-size: 10px; color: var(--vscode-descriptionForeground, #777); text-align: right; }
-
-    #song-select {
-      width: 100%;
-      background: var(--vscode-dropdown-background, #3c3c3c);
-      color: var(--vscode-dropdown-foreground, #ccc);
-      border: 1px solid var(--vscode-dropdown-border, #555);
-      border-radius: 3px; padding: 3px 5px; font-size: 12px; cursor: pointer;
+    #time-label {
+      font-size: 10px;
+      color: var(--fg-dim);
+      text-align: right;
     }
 
+    /* ── Song select ── */
+    select {
+      width: 100%;
+      background: var(--surface);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 3px 5px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* ── Rows & buttons ── */
     .row { display: flex; gap: 5px; }
+
     .btn {
       flex: 1;
-      background: var(--vscode-button-secondaryBackground, #3a3a3a);
-      color: var(--vscode-button-secondaryForeground, #ccc);
-      border: 1px solid transparent;
-      border-radius: 3px; padding: 3px 0; font-size: 13px;
-      cursor: pointer; text-align: center; user-select: none;
+      background: var(--surface);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px 0;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+      transition: background 0.1s;
     }
-    .btn:hover { background: var(--vscode-button-secondaryHoverBackground, #505050); }
-    .btn.active {
-      background: var(--vscode-button-background, #0e639c);
-      color: var(--vscode-button-foreground, #fff);
+    .btn:hover  { background: #3a3a3a; }
+    .btn.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid var(--border); }
+
+    /* ── Config section ── */
+    .cfg-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cfg-row label {
+      width: 90px;
+      flex-shrink: 0;
+      color: var(--fg-dim);
+    }
+    .cfg-row input[type=range] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+    .cfg-row .val {
+      width: 32px;
+      text-align: right;
+      color: var(--fg);
+    }
+    .cfg-row input[type=checkbox] {
+      accent-color: var(--accent);
+      width: 14px; height: 14px;
+      cursor: pointer;
     }
   </style>
   <title>Akaza's Love</title>
 </head>
 <body>
-  <div id="player">
-    <div id="now-playing">—</div>
-    <div class="bar-label">Demo</div>
+<div id="app">
+
+  <div id="status">Starting…</div>
+  <div id="now-playing">—</div>
+
+  <div>
+    <div class="bar-label">Demo playback</div>
     <div class="bar-wrap"><div class="bar-fill" id="audio-bar"></div></div>
     <div id="time-label"></div>
-    <div class="bar-label">Typing</div>
-    <div class="bar-wrap"><div class="bar-fill" id="midi-bar"></div></div>
-    <select id="song-select"></select>
-    <div class="row">
-      <button class="btn" id="btn-shuffle">Shuffle</button>
-      <button class="btn" id="btn-loop">Loop</button>
-    </div>
   </div>
 
-  <script>
-    const vscode = acquireVsCodeApi()
-    const $ = id => document.getElementById(id)
+  <div>
+    <div class="bar-label">Typing progress</div>
+    <div class="bar-wrap"><div class="bar-fill" id="midi-bar"></div></div>
+  </div>
 
-    $('song-select').addEventListener('change', () =>
-      vscode.postMessage({ type: 'SELECT_SONG', idx: parseInt($('song-select').value, 10) }))
+  <select id="song-select"></select>
 
-    $('btn-shuffle').addEventListener('click', () => {
-      const v = !$('btn-shuffle').classList.toggle('active')
-      $('btn-shuffle').classList.toggle('active', !v)
-      // toggle returns the new state
-      vscode.postMessage({ type: 'TOGGLE_SHUFFLE', value: $('btn-shuffle').classList.contains('active') })
+  <div class="row">
+    <button class="btn" id="btn-play">▶ Play</button>
+    <button class="btn" id="btn-stop">■ Stop</button>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="btn-shuffle">⇄ Shuffle</button>
+    <button class="btn" id="btn-loop">↻ Loop</button>
+  </div>
+
+  <hr />
+
+  <!-- ── Config ── -->
+
+  <div class="cfg-row">
+    <label>Music Typing</label>
+    <input type="checkbox" id="cfg-music-typing" />
+  </div>
+
+  <div class="cfg-row">
+    <label>Volume</label>
+    <input type="range" id="cfg-volume" min="0" max="1" step="0.01" />
+    <span class="val" id="cfg-volume-val">0.10</span>
+  </div>
+
+  <div class="cfg-row">
+    <label>Window size</label>
+    <input type="range" id="cfg-window" min="0.05" max="1" step="0.05" />
+    <span class="val" id="cfg-window-val">0.20s</span>
+  </div>
+
+  <div class="cfg-row">
+    <label>Max delay</label>
+    <input type="range" id="cfg-delay" min="0.5" max="10" step="0.5" />
+    <span class="val" id="cfg-delay-val">3.0s</span>
+  </div>
+
+</div>
+
+<script>
+  // ── Bridge — works the same way in both VSCode (acquireVsCodeApi) and Electron
+  const bridge = window.api  // injected by preload.js
+
+  const $ = id => document.getElementById(id)
+
+  // ── Song select ──────────────────────────────────────────────────────────
+  $('song-select').addEventListener('change', () =>
+    bridge.postMessage({ type: 'SELECT_SONG', idx: parseInt($('song-select').value, 10) }))
+
+  // ── Transport buttons ────────────────────────────────────────────────────
+  $('btn-play').addEventListener('click',    () => bridge.postMessage({ type: 'PLAY' }))
+  $('btn-stop').addEventListener('click',    () => bridge.postMessage({ type: 'STOP' }))
+
+  $('btn-shuffle').addEventListener('click', () => {
+    $('btn-shuffle').classList.toggle('active')
+    bridge.postMessage({ type: 'TOGGLE_SHUFFLE', value: $('btn-shuffle').classList.contains('active') })
+  })
+
+  $('btn-loop').addEventListener('click', () => {
+    $('btn-loop').classList.toggle('active')
+    bridge.postMessage({ type: 'TOGGLE_LOOP', value: $('btn-loop').classList.contains('active') })
+  })
+
+  // ── Config controls ──────────────────────────────────────────────────────
+  function patchConfig(patch) {
+    bridge.postMessage({ type: 'SET_CONFIG', patch })
+  }
+
+  $('cfg-music-typing').addEventListener('change', () =>
+    patchConfig({ musicTyping: $('cfg-music-typing').checked }))
+
+  $('cfg-volume').addEventListener('input', () => {
+    const v = parseFloat($('cfg-volume').value)
+    $('cfg-volume-val').textContent = v.toFixed(2)
+    patchConfig({ volume: v })
+  })
+
+  $('cfg-window').addEventListener('input', () => {
+    const v = parseFloat($('cfg-window').value)
+    $('cfg-window-val').textContent = v.toFixed(2) + 's'
+    patchConfig({ windowSize: v })
+  })
+
+  $('cfg-delay').addEventListener('input', () => {
+    const v = parseFloat($('cfg-delay').value)
+    $('cfg-delay-val').textContent = v.toFixed(1) + 's'
+    patchConfig({ maxDelay: v })
+  })
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function fmt(s) {
+    if (s == null || isNaN(s)) return '--:--'
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+  }
+
+  function applyConfig(cfg) {
+    $('cfg-music-typing').checked    = !!cfg.musicTyping
+    $('cfg-volume').value            = cfg.volume ?? 0.1
+    $('cfg-volume-val').textContent  = (cfg.volume ?? 0.1).toFixed(2)
+    $('cfg-window').value            = cfg.windowSize ?? 0.2
+    $('cfg-window-val').textContent  = (cfg.windowSize ?? 0.2).toFixed(2) + 's'
+    $('cfg-delay').value             = cfg.maxDelay ?? 3
+    $('cfg-delay-val').textContent   = (cfg.maxDelay ?? 3).toFixed(1) + 's'
+  }
+
+  function applySongList(msg) {
+    const sel = $('song-select')
+    sel.innerHTML = ''
+    ;(msg.songs || []).forEach((name, i) => {
+      const o = document.createElement('option')
+      o.value = i; o.textContent = name; if (i === msg.currentIdx) o.selected = true
+      sel.appendChild(o)
     })
 
-    $('btn-loop').addEventListener('click', () => {
-      $('btn-loop').classList.toggle('active')
-      vscode.postMessage({ type: 'TOGGLE_LOOP', value: $('btn-loop').classList.contains('active') })
-    })
+    $('btn-shuffle').classList.toggle('active', !!msg.shuffle)
+    $('btn-loop').classList.toggle('active',    !!msg.loop)
 
-    function fmt(s) {
-      if (s == null || isNaN(s)) return '--:--'
-      return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+    const name = (msg.songs || [])[msg.currentIdx] ?? null
+    const np   = $('now-playing')
+    np.textContent = msg.isPlaying && name ? `♪ ${name}` : (name || '—')
+    np.classList.toggle('active', !!(msg.isPlaying && name))
+
+    const elapsed = msg.elapsed ?? 0, total = msg.totalDuration ?? 0
+    $('audio-bar').style.width = total > 0 ? `${Math.min(100, elapsed / total * 100)}%` : '0%'
+    $('time-label').textContent = total > 0 ? `${fmt(elapsed)} / ${fmt(total)}` : ''
+    $('midi-bar').style.width = `${Math.min(100, (msg.midiProgress ?? 0) * 100)}%`
+  }
+
+  // ── Message handler ──────────────────────────────────────────────────────
+  bridge.onMessage(msg => {
+    if (!msg?.type) return
+    switch (msg.type) {
+      case 'SONG_LIST': applySongList(msg); break
+      case 'CONFIG':    applyConfig(msg);   break
+      case 'STATUS':    $('status').textContent = msg.message; break
+      case 'ERROR':     $('status').textContent = '⚠️ ' + msg.message; break
     }
+  })
 
-    function applySongList(msg) {
-      const sel = $('song-select')
-      sel.innerHTML = ''
-      ;(msg.songs || []).forEach((name, i) => {
-        const o = document.createElement('option')
-        o.value = i; o.textContent = name; if (i === msg.currentIdx) o.selected = true
-        sel.appendChild(o)
-      })
-      $('btn-shuffle').classList.toggle('active', !!msg.shuffle)
-      $('btn-loop').classList.toggle('active', !!msg.loop)
-
-      const name = (msg.songs || [])[msg.currentIdx] ?? null
-      const np = $('now-playing')
-      np.textContent = msg.isPlaying && name ? `♪ ${name}` : (name || '—')
-      np.classList.toggle('active', !!(msg.isPlaying && name))
-
-      const elapsed = msg.elapsed ?? 0, total = msg.totalDuration ?? 0
-      $('audio-bar').style.width = total > 0 ? `${Math.min(100, elapsed / total * 100)}%` : '0%'
-      $('time-label').textContent = total > 0 ? `${fmt(elapsed)} / ${fmt(total)}` : ''
-      $('midi-bar').style.width = `${Math.min(100, (msg.midiProgress ?? 0) * 100)}%`
-    }
-
-    window.addEventListener('message', ({ data: msg }) => {
-      if (!msg?.type) return
-      if (msg.type === 'SONG_LIST') applySongList(msg)
-    })
-  </script>
+  // Request initial state as soon as the page loads
+  bridge.postMessage({ type: 'GET_CONFIG' })
+</script>
 </body>
 </html>
