@@ -4,7 +4,6 @@ const path = require('path')
 class WebviewProvider {
   #context
   #webview
-  // Minimal inline typing-rate tracker (was TypingRate.js)
   #keystrokeTs = []
 
   constructor(context) { this.#context = context }
@@ -18,7 +17,7 @@ class WebviewProvider {
       if (!msg?.type) return
       const MT = require('./MusicTyping')
       switch (msg.type) {
-        case 'SELECT_SONG': MT.selectSong(msg.idx); break
+        case 'SELECT_SONG':    MT.selectSong(msg.idx); break
         case 'TOGGLE_SHUFFLE': MT.setShuffle(msg.value); break
         case 'TOGGLE_LOOP': MT.setLoop(msg.value); break
         case 'PLAY': vscode.commands.executeCommand('akazas-love.playSong'); break

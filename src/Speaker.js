@@ -2,22 +2,42 @@ const { https } = require('follow-redirects')
 const { spawn } = require('child_process')
 const fs = require('fs')
 const path = require('path')
-const vscode = require('vscode')
+
+// Speaker is vscode-free. Callers inject callbacks for status/error reporting
+// so this module works identically in the VSCode extension and Electron standalone.
 
 class Speaker {
-
   static #binaryPath = null
   static #binaryReady = false
   static #binaryDownloading = false
   static #currentPlayProcess = null
 
-  static async setupSpeaker(context, statusBarItem) {
+  // Injected by the caller — default to console so it always works
+  static #onStatus = (msg) => console.log('[Speaker]', msg)
+  static #onError  = (msg) => console.error('[Speaker]', msg)
+  static #onPlayingChanged = (_isPlaying) => {}
+
+  /**
+   * @param {string}   binDir              - directory to store the downloaded binary 
+   * context.extensionPath, 'bin'
+   * @param {object}   [callbacks]
+   * @param {function} [callbacks.onStatus]        - (message: string) => void
+   * @param {function} [callbacks.onError]         - (message: string) => void
+   * @param {function} [callbacks.onPlayingChanged] - (isPlaying: boolean) => void
+   */
+  static async setupSpeaker(binDir, { onStatus, onError, onPlayingChanged } = {}) {
+    if (onStatus)        this.#onStatus        = onStatus
+    // vscode.window.showInformationMessage
+    if (onError)         this.#onError         = onError
+    // vscode.window.showWarningMessage
+    if (onPlayingChanged) this.#onPlayingChanged = onPlayingChanged 
+    //  vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
+
     if (!this.#assetName) {
-      vscode.window.showErrorMessage('Unsupported platform for play-buffer')
+      this.#onError('Unsupported platform for play-buffer')
       return
     }
-    if (!Speaker.#binaryReady) await Speaker.#downloadPlayBuffer(context)
-    statusBarItem.text = 'Akaza: Ready ❄️'
+    if (!Speaker.#binaryReady) await Speaker.#downloadPlayBuffer(binDir)
   }
 
   static stopAllProcesses() {
@@ -42,20 +62,20 @@ class Speaker {
   static sendToSpeaker(arr, onFinish = null) {
     const buffer = Buffer.from(arr.buffer)
     if (!Speaker.#binaryPath || !Buffer.isBuffer(buffer) || !buffer.length) {
-      vscode.window.showErrorMessage('play-buffer: invalid buffer or binary missing')
+      this.#onError('play-buffer: invalid buffer or binary missing')
       return
     }
     Speaker.#killCurrentProcess()
-    vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
+    this.#onPlayingChanged(true)
     const proc = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
     Speaker.#currentPlayProcess = proc
     proc.stdin.write(buffer)
     proc.stdin.end()
-    proc.on('error', e => vscode.window.showWarningMessage('play-buffer error: ' + e.message))
+    proc.on('error', e => this.#onError('play-buffer error: ' + e.message))
     proc.on('exit', (_, signal) => {
-      if(Speaker.#currentPlayProcess === proc ){
+      if (Speaker.#currentPlayProcess === proc) {
         Speaker.#currentPlayProcess = null
-        vscode.commands.executeCommand('setContext', 'akazas-love.playing', false)
+        this.#onPlayingChanged(false)
         if (signal == null && onFinish) onFinish()
       }
     })
@@ -65,8 +85,8 @@ class Speaker {
     if (Speaker.#currentPlayProcess && !Speaker.#currentPlayProcess.killed) Speaker.#killCurrentProcess()
   }
 
-  static async redownloadPlayBuffer(context) {
-    await Speaker.#downloadPlayBuffer(context, true)
+  static async redownloadPlayBuffer(binDir) {
+    await Speaker.#downloadPlayBuffer(binDir, true)
   }
 
   static #killCurrentProcess() {
@@ -78,18 +98,19 @@ class Speaker {
     const p = process.platform
     if (p === 'win32') return 'play_buffer_windows.exe'
     if (p === 'darwin') return 'play_buffer_macos'
-    if (p === 'linux') return 'play_buffer_linux'
+    if (p === 'linux')  return 'play_buffer_linux'
   }
 
-  static async #downloadPlayBuffer(context, force = false) {
+  static async #downloadPlayBuffer(binDir, force = false) {
     if (Speaker.#binaryReady && !force) return
-    if (Speaker.#binaryDownloading) { vscode.window.showWarningMessage('play-buffer still downloading'); return }
-    if (!force) {
-      Speaker.#binaryPath = path.join(context.extensionPath, 'bin', this.#assetName)
-      fs.mkdirSync(path.dirname(Speaker.#binaryPath), { recursive: true })
-      if (fs.existsSync(Speaker.#binaryPath)) { Speaker.#binaryReady = true; return }
-    }
+    if (Speaker.#binaryDownloading) { this.#onError('play-buffer still downloading'); return }
+
+    Speaker.#binaryPath = path.join(binDir, this.#assetName)
+    fs.mkdirSync(path.dirname(Speaker.#binaryPath), { recursive: true })
+    if (!force && fs.existsSync(Speaker.#binaryPath)) { Speaker.#binaryReady = true; return }
+
     Speaker.#binaryDownloading = true
+    this.#onStatus('Downloading play-buffer…')
     const asset = await this.#getAssetInfo()
     await new Promise((resolve, reject) => {
       https.get(asset.browser_download_url, res => {
@@ -104,7 +125,7 @@ class Speaker {
           try { if (process.platform !== 'win32') fs.chmodSync(Speaker.#binaryPath, '755') } catch (e) { /* ignore */ }
           Speaker.#binaryReady = true
           Speaker.#binaryDownloading = false
-          vscode.window.showInformationMessage('play-buffer downloaded! 🚀')
+          this.#onStatus('play-buffer downloaded! 🚀')
           resolve()
         })
         file.on('error', e => { Speaker.#binaryDownloading = false; reject(e) })

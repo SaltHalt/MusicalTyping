@@ -1,7 +1,9 @@
 const fs = require('fs')
 const path = require('path')
 const https = require('https')
-const vscode = require('vscode')
+
+// SoundFont is vscode-free. Callers inject status callbacks so this module
+// works identically in the VSCode extension and Electron standalone.
 
 const SAMPLE_RATE = 44100
 const MIDI_MIN = 21   // A0
@@ -20,21 +22,34 @@ class SoundFont {
   static #ready = false
   static #initPromise = null
 
+  // Injected callbacks — default to console
+  static #onStatus   = (msg) => console.log('[SoundFont]', msg)
+  static #onProgress = (pct) => console.log(`[SoundFont] decoding ${pct}%`)
+
   static get isReady() { return this.#ready }
 
-  static init(context) {
+  /**
+   * @param {string}   cacheDir             - writable dir for the soundfont file and decoded samples
+   * @param {object}   [callbacks]
+   * @param {function} [callbacks.onStatus]   - (message: string) => void  — shown in status bar / tray tooltip
+   * @param {function} [callbacks.onProgress] - (percent: number) => void  — 0–100 during decode
+   */
+  static init(cacheDir, { onStatus, onProgress } = {}) {
+    if (onStatus)   this.#onStatus   = onStatus
+    if (onProgress) this.#onProgress = onProgress
+
     if (this.#initPromise) return this.#initPromise
-    this.#cacheDir = path.join(context.globalStoragePath, 'soundfont')
+    this.#cacheDir = path.join(cacheDir, 'soundfont')
     fs.mkdirSync(this.#cacheDir, { recursive: true })
-    this.#initPromise = this.#run(context)
+    this.#initPromise = this.#run()
     return this.#initPromise
   }
 
   static async waitUntilReady() {
     if (this.#ready) return
     if (!this.#initPromise) throw new Error('SoundFont.init() was not called')
-    const msg = vscode.window.setStatusBarMessage('🎹 Waiting for piano samples...')
-    try { await this.#initPromise } finally { msg.dispose() }
+    this.#onStatus('🎹 Waiting for piano samples…')
+    await this.#initPromise
   }
 
   // Returns a Float32Array of `durationSecs` seconds of PCM for the given midi note.
@@ -46,41 +61,33 @@ class SoundFont {
 
     const needed = Math.max(1, Math.ceil(durationSecs * SAMPLE_RATE))
     const out = new Float32Array(needed)
-    const releaseSamples = Math.min(needed, Math.floor(0.12 * SAMPLE_RATE)) //Is this a normal fade?
+    const releaseSamples = Math.min(needed, Math.floor(0.12 * SAMPLE_RATE))
     for (let i = 0; i < needed; i++) {
-      const fade = (needed - i) < releaseSamples ? (needed - i) / releaseSamples : 1.0   //\log_{10}\left(1+9x\right)
-      out[i] = (i < raw.length ? raw[i] : 0) * velocity * fade  //gain = \log_{10}\left(1+9*velocity\right)
+      const fade = (needed - i) < releaseSamples ? (needed - i) / releaseSamples : 1.0
+      out[i] = (i < raw.length ? raw[i] : 0) * velocity * fade
     }
     return out
   }
 
-  static async #run(context) {
+  static async #run() {
     const cacheFile = path.join(this.#cacheDir, CACHE_FILENAME)
     if (!fs.existsSync(cacheFile)) {
-      const bar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99)
-      bar.text = '🎹 Downloading piano soundfont…'
-      bar.show()
-      context.subscriptions.push(bar)
+      this.#onStatus('🎹 Downloading piano soundfont…')
       try {
         await this.#downloadFile(SOUNDFONT_JS_URL, cacheFile)
       } catch (e) {
-        bar.text = '⚠️ Soundfont download failed'
+        this.#onStatus('⚠️ Soundfont download failed')
         console.error('SoundFont download failed:', e)
-        setTimeout(() => bar.hide(), 4000)
         return
       }
-      bar.hide()
     }
-    await this.#decode(cacheFile, context)
+    await this.#decode(cacheFile)
     this.#ready = true
-    vscode.window.setStatusBarMessage('🎹 Piano samples ready!', 3000)
+    this.#onStatus('🎹 Piano samples ready!')
   }
 
-  static async #decode(jsFilePath, context) { //TODO: no js library function?
-    const bar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99)
-    bar.text = '🎹 Decoding piano samples…'
-    bar.show()
-    context.subscriptions.push(bar)
+  static async #decode(jsFilePath) {
+    this.#onStatus('🎹 Decoding piano samples…')
 
     const js = fs.readFileSync(jsFilePath, 'utf8')
     const noteMap = new Map()
@@ -90,7 +97,6 @@ class SoundFont {
 
     if (noteMap.size === 0) {
       console.error('SoundFont: no notes found — format may have changed')
-      bar.hide()
       return
     }
 
@@ -114,9 +120,8 @@ class SoundFont {
         decoder.free()
       }
       done++
-      if (done % 10 === 0) bar.text = `🎹 Decoding piano samples… ${Math.round(done / total * 100)}%`
+      if (done % 10 === 0) this.#onProgress(Math.round(done / total * 100))
     }
-    bar.hide()
   }
 
   static #downloadFile(url, destPath) {
