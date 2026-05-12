@@ -6,6 +6,38 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "Debug Standalone (Electron)",
+			"type": "node",
+			"request": "launch",
+			"runtimeExecutable": "${workspaceFolder}/node_modules/.bin/electron",
+			"runtimeArgs": [
+				"--remote-debugging-port=9223",
+				"."
+			],
+			"args": [
+				"dist/standalone/main.js"
+			],
+			"cwd": "${workspaceFolder}",
+			"sourceMaps": true,
+			"outFiles": [
+				"${workspaceFolder}/dist/standalone/**/*.js"
+			],
+			"env": {
+				"ELECTRON_ENABLE_LOGGING": "1"
+			},
+			"console": "integratedTerminal"
+		},
+		{
+			"name": "Electron Main",
+			"program": "${workspaceFolder}/main.js",
+			"request": "launch",
+			"runtimeExecutable": "electron",
+			"skipFiles": [
+				"<node_internals>/**"
+			],
+			"type": "node"
+		},
+		{
 			"name": "Run Extension",
 			"type": "extensionHost",
 			"request": "launch",

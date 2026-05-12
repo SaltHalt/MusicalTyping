@@ -31,7 +31,8 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./dist/extension.js",
+  ".main": "./dist/extension.js",
+  "main": "dist/standalone/main.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -121,12 +122,12 @@
           "type": "boolean",
           "default": true,
           "description": "Loop the playlist when it reaches the end"
-        }, 
+        },
         "akazas-love.mediaDir": {
           "type": "string",
           "default": "D:\\Programs\\vscode-akazas-love\\media",
           "description": "Path to folder containing MIDI files"
-        }, 
+        },
         "akazas-love.windowSize": {
           "type": "number",
           "default": 0.2,
@@ -145,18 +146,53 @@
     "build": "node ./build.js",
     "build-dev": "node ./build.js --dev",
     "vsce-package": "vsce package",
-    "efix": "eslint . --fix"
+    "efix": "eslint . --fix",
+    "standalone": "electron dist/standalone/main.js",
+    "standalone:dev": "node build.js --dev && electron dist/standalone/main.js",
+    "dist": "node build.js && electron-builder --win portable",
+    "postinstall": "electron-builder install-app-deps" 
+  },
+  "build": {
+    "appId": "com.lanly-dev.akazas-love",
+    "productName": "Akaza's Love",
+    "directories": {
+      "app": ".",
+      "output": "release"
+    },
+    "files": [
+      "dist/standalone/**",
+      "node_modules/**",
+      "icons/**",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "icons/", "to": "icons/" }
+    ],
+    "win": {
+      "icon": "icons/tray.ico",
+      "target": [{ "target": "portable" }]
+    },
+    "portable": {
+      "artifactName": "AkazasLove-portable.exe"
+    },
+    "npmRebuild": true,
+    "buildDependenciesFromSource": false
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
     "follow-redirects": "^1.15.11",
+    "get-windows": "^9.3.0",
     "mpg123-decoder": "^1.0.3",
-    "node-liblzma": "^4.0.2"
+    "node-liblzma": "^4.0.2",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
     "@types/node": "24.x",
     "@types/vscode": "^1.104.0",
     "@vscode/vsce": "^3.6.2",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
+    "electron-rebuild": "^3.2.9",
     "esbuild": "^0.25.10",
     "eslint": "^9.37.0",
     "minify": "^14.1.0",

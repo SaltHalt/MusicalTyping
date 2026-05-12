@@ -1,0 +1,24 @@
+directories:
+  output: release
+  buildResources: build
+  app: .
+appId: com.lanly-dev.akazas-love
+productName: Akaza's Love
+files:
+  - filter:
+      - dist/standalone/**
+      - node_modules/**
+      - icons/**
+      - package.json
+extraResources:
+  - from: icons/
+    to: icons/
+win:
+  icon: icons/tray.ico
+  target:
+    - target: portable
+portable:
+  artifactName: AkazasLove-portable.exe
+npmRebuild: true
+buildDependenciesFromSource: false
+electronVersion: 42.0.1
