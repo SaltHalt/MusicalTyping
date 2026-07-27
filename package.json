@@ -3,7 +3,7 @@
   "displayName": "Akaza's Love - Musical Typing 🎶 and Falling Snow ❄️",
   "description": "Transform your typing into beautiful melody and animated snowfall",
   "publisher": "lanly-dev",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "sponsor": {
     "url": "https://github.com/sponsors/lanly-dev"
   },
@@ -334,16 +334,15 @@
   },
   "dependencies": {
     "@tonejs/midi": "^2.0.28",
-    "follow-redirects": "^1.15.11"
+    "follow-redirects": "^1.16.0"
   },
   "devDependencies": {
-    "@types/node": "24.x",
-    "@types/vscode": "^1.104.0",
-    "@vscode/vsce": "^3.6.2",
-    "esbuild": "^0.25.10",
-    "eslint": "^9.37.0",
-    "minify": "^14.1.0",
-    "ovsx": "^0.10.6"
+    "@types/node": "26.x",
+    "@types/vscode": "^1.125.0",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.8.0",
+    "minify": "^15.3.1",
+    "ovsx": "^1.0.2"
   },
   "repository": {
     "type": "git",

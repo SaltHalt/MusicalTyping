@@ -1,8 +1,12 @@
 # Change Log
-
-All notable changes to the "Akaza's Love" extension will be documented in this file.
-
+All notable changes to the "Akaza's Love" extension will be documented in this file. \
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+
+## [TODO]
+- Bug: there is issue from waking up after sleep - for binary
+- Not automatic switching speaker - for binary
+
+## [1.0.2] - 2026-
 
 ## [1.0.1] - 2025-10-05
 - Fixed editor unresponsiveness after extended use or heavy scrolling with snow-in-editor effect
@@ -35,7 +39,7 @@ The file extension/media/happy.png is large (6.98 MB)
 ```
 
 ### Note
-- Not sure what caused the build up since nothing seem strange when inspecting cpu/memory usage stats
+- Not sure what caused the build up that made the vscode freeze since nothing seem strange when inspecting cpu/memory usage stats
 
 
 ## [1.0.0] - 2025-10-02
