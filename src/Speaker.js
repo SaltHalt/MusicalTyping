@@ -37,10 +37,13 @@ class Speaker {
     try {
       if (Speaker.#streamPool.length < Speaker.#MAX_STREAMS) {
         for (let i = Speaker.#streamPool.length; i < Speaker.#MAX_STREAMS; i++) {
-          const proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'ignore'] })
+          const proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'pipe'] })
           proc.on('error', (err) => {
             console.error('play-buffer pool process error:', err)
             Speaker.#streamPool[i] = null
+          })
+          proc.stderr.on('data', (data) => {
+            console.error('play-buffer stderr:', data.toString())
           })
           proc.on('exit', () => {
             console.info('play-buffer pool process exited')
@@ -102,13 +105,16 @@ class Speaker {
       // The method sendToSpeaker should be generic but well only one task calls it so it is fine
       vscode.commands.executeCommand('setContext', 'akazas-love.playing', true)
 
-      const playProcess = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'ignore'] })
+      const playProcess = spawn(Speaker.#binaryPath, [], { stdio: ['pipe', 'ignore', 'pipe'] })
       Speaker.#currentPlayProcess = playProcess
       playProcess.stdin.write(buffer)
       playProcess.stdin.end()
       playProcess.on('error', (err) => {
         vscode.window.showWarningMessage('Failed to play buffer: ' + err.message)
         console.error('Speaker.sendToSpeaker spawn error:', err)
+      })
+      playProcess.stderr.on('data', (data) => {
+        console.error('play-buffer stderr:', data.toString())
       })
       playProcess.on('exit', () => {
         Speaker.#currentPlayProcess = null
@@ -134,15 +140,20 @@ class Speaker {
   static sendToMultipleStreamsSpeaker(buffer) {
     // Send buffer to next process in pool (round robin)
     let proc = Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS]
+    console.log(proc)
     if (!proc || proc.killed) {
       // Restart dead process
       try {
-        proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'ignore'] })
+        proc = spawn(Speaker.#binaryPath, [Speaker.#PLAY_BUFFER_MODE], { stdio: ['pipe', 'ignore', 'pipe'] })
         proc.on('error', (err) => {
           console.error('play-buffer pool process error:', err)
         })
+        proc.stderr.on('data', (data) => {
+          console.error('play-buffer stderr:', data.toString())
+        })
         proc.on('exit', () => {
           Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS] = null
+          console.log('play-buffer pool process exited')
         })
         Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS] = proc
       } catch (e) {
