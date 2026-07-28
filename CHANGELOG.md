@@ -5,6 +5,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [TODO]
 - Bug: there is issue from waking up after sleep - for binary
 - Not automatic switching speaker - for binary
+- Stop status combination to extension status for playing
+- Three modes for SnowInEditor
 
 ## [1.0.2] - 2026-
 

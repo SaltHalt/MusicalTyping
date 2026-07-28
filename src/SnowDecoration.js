@@ -1,6 +1,7 @@
 const vscode = require('vscode')
 const TypingRate = require('./TypingRate')
 
+// SnowDecoration handles the snowflake animation and decorations in the editor.
 class SnowDecoration {
 
   #FPS = 8

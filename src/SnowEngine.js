@@ -61,6 +61,7 @@ class SnowEngine {
     let vrLast = 0
     const DEBOUNCE_INTERVAL = 1000
     // Could apply for d4 but doesn't work, vscode slow to update active editor than its event?
+    // What did I mean? 🫤
     const d4 = onDidChangeActiveTextEditor(() => this.#snowDecoration.setupEditors())
     const d5 = onDidChangeTextEditorVisibleRanges(() => {
       const now = Date.now()
