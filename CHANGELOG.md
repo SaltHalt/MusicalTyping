@@ -4,11 +4,38 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [TODO]
 - Bug: there is issue from waking up after sleep - for binary
-- Not automatic switching speaker - for binary
+- Bug: not automatic switching speaker - for binary
 - Stop status combination to extension status for playing
-- Three modes for SnowInEditor
+- Three modes for SnowInEditor - separate typingDriven from panel
+- Add gif
 
-## [1.0.2] - 2026-
+## [1.0.2] - 2026-07-29
+- Add notes
+- Change default `snowInEditor` to `false` as default
+- Update deps
+ 12 files, 7.06 MB, 1.30.0, req1.125.0
+```
+Done in 80ms
+INFO  Files included in the VSIX:
+akazas-love-1.0.2.vsix
+├─ [Content_Types].xml
+├─ extension.vsixmanifest
+└─ extension/
+   ├─ LICENSE.txt [1.06 KB]
+   ├─ changelog.md [3.41 KB]
+   ├─ package.json [10.63 KB]
+   ├─ readme.md [2.48 KB]
+   ├─ dist/
+   │  ├─ extension.js [69.02 KB]
+   │  └─ index.html [3.74 KB]
+   └─ media/
+      ├─ akaza's-love-theme.mid [3.68 KB]
+      ├─ akaza.png [53.15 KB]
+      ├─ akaza.svg [4.38 KB]
+      └─ happy.png [6.98 MB]
+
+The file extension/media/happy.png is large (6.98 MB)
+```
 
 ## [1.0.1] - 2025-10-05
 - Fixed editor unresponsiveness after extended use or heavy scrolling with snow-in-editor effect
@@ -16,7 +43,6 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
    - Scrolling debounce
    - Add `dispose()`
 - 12 files, 7.06 MB, 1.104.0
-
 ```
 Done in 14ms
 INFO  Files included in the VSIX:
@@ -54,7 +80,6 @@ The file extension/media/happy.png is large (6.98 MB)
 - Live settings: all features update instantly when settings change
 - Status bar integration: toggle features from the VS Code status bar
 - 12 files, 7.06 MB, 1.104.0
-
 ```
 Done in 328ms
 INFO  Files included in the VSIX:

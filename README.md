@@ -45,11 +45,13 @@ The artwork used in this extension is not mine. All rights and credit go to the 
 
 ## Release Notes
 
+### 1.0.2
+Minor updates
+
 ### 1.0.1
 Fixed performance issues with snow-in-editor effect
 
 ### 1.0.0
-
 Initial release of the extension
 
 **Enjoy!**

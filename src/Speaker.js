@@ -140,7 +140,7 @@ class Speaker {
   static sendToMultipleStreamsSpeaker(buffer) {
     // Send buffer to next process in pool (round robin)
     let proc = Speaker.#streamPool[Speaker.#streamPoolIdx % Speaker.#MAX_STREAMS]
-    console.log(proc)
+    // console.log(proc)
     if (!proc || proc.killed) {
       // Restart dead process
       try {

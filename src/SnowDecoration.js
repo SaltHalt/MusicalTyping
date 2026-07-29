@@ -73,7 +73,7 @@ class SnowDecoration {
   }
 
   dispose() {
-    console.log('SnowDecoration dispose')
+    // console.log('SnowDecoration dispose')
     this.#stopping = false
     if (this.#timer) {
       clearInterval(this.#timer)
@@ -118,7 +118,7 @@ class SnowDecoration {
  * Called on activation and whenever visible editors or ranges change.
  */
   setupEditors() {
-    console.log('SnowDecoration setupEditors')
+    // console.log('SnowDecoration setupEditors')
     if (!this.#enabled) return
 
     // Dispose old decorations
