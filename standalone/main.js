@@ -215,16 +215,12 @@ app.whenReady().then(async () => {
   uIOhook.on('mousedown', () => {
     isCurrentlyExempt().then(result => {
       if (result) return;
-      MusicTyping.onKeyPress(); 
-      MusicTyping.onKeyPress();
       MusicTyping.onKeyPress();
     })
   })
   uIOhook.on('click', () => {
     isCurrentlyExempt().then(result => {
       if (result) return;
-      MusicTyping.onKeyPress(); 
-      MusicTyping.onKeyPress();
       MusicTyping.onKeyPress();
     })
   })
