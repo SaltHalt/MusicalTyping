@@ -9,3 +9,4 @@ media/*
 icons/*
 midi_cache.lnk
 src/TODO.txt
+.node_modules/**
