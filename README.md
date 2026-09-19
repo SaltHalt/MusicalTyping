@@ -5,5 +5,5 @@ The `standalone` branch is a standalone program that reacts to all keypresses/ty
 
 ## Acknowledgement
 The artwork used in this extension is not mine. All rights and credit go to the original artist(s).
-This extension is based off of lanly-dev's work.
+This extension is based off of lanly-dev's work, including their play-buffer javascript sound player.
 Claude was used extensively when programming this.
